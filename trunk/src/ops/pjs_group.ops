@@ -1,0 +1,426 @@
+#include "parrot/dynext.h"
+#include "parrot/parrot.h"
+#include "../compiler/emit.h"
+
+
+#define dynpmc_PjsNumber pmc_type(interp, \
+                string_from_literal(interp, "PjsNumber"))
+#define dynpmc_PjsString pmc_type(interp, \
+                string_from_literal(interp, "PjsString"))
+#define dynpmc_PjsBoolean pmc_type(interp, \
+                string_from_literal(interp, "PjsBoolean"))
+#define dynpmc_PjsNull pmc_type(interp, \
+                string_from_literal(interp, "PjsNull"))
+#define dynpmc_PjsUndefined pmc_type(interp, \
+                string_from_literal(interp, "PjsUndefined"))
+#define dynpmc_PjsObject pmc_type(interp, \
+                string_from_literal(interp, "PjsObject"))
+#define dynpmc_PjsFunction pmc_type(interp, \
+                string_from_literal(interp, "PjsFunction"))
+#define dynpmc_PjsArray pmc_type(interp, \
+                string_from_literal(interp, "PjsArray"))
+
+
+
+static INTVAL is_js_primitive(Interp* interp, PMC* val) {
+    int t = val->vtable->base_type;
+    return
+        t == dynpmc_PjsNumber  ||
+        t == dynpmc_PjsString  ||
+        t == dynpmc_PjsBoolean ||
+        t == dynpmc_PjsNull    ||
+        t == dynpmc_PjsUndefined;
+}
+
+static INTVAL is_js_object(Interp* interp, PMC* val) {
+    int t = val->vtable->base_type;
+    return  t == dynpmc_PjsObject  ||
+            t == dynpmc_PjsFunction  ||
+            t == dynpmc_PjsArray;
+}
+
+static PMC* get_global_env(Interp* interp) {
+    STRING * global_env_name = string_from_literal(interp, "global_env");
+    PMC * const hll_ns = Parrot_get_ctx_HLL_namespace(interp);
+    PMC * global_env = Parrot_get_global(interp, hll_ns, global_env_name);
+    return global_env;
+}
+static PMC* get_global_obj(Interp* interp) {
+    PMC * global_env = get_global_env(interp);
+    PMC * global_obj = VTABLE_get_pmc_keyed_int(interp, global_env, 0);
+    return global_obj;
+}
+static PMC* get_global(Interp* interp, const char* c_name) {
+    STRING * name = string_from_cstring(interp, c_name, 0);
+    PMC * hll_ns = Parrot_get_ctx_HLL_namespace(interp);
+    PMC * obj = Parrot_get_global(interp, hll_ns, name);
+    return obj;
+}
+static INTVAL try_jsinvoke_noarg(  Interp* interp, 
+                            PMC* obj, 
+                            const char* const meth_name_c, 
+                            PMC** result_ptr        ) {
+    STRING* meth_name = string_from_cstring(interp, meth_name_c, 0);
+    PMC* sub = VTABLE_get_pmc_keyed_str(interp, obj, meth_name);
+    if (PMC_IS_NULL(sub) || sub->vtable->base_type == dynpmc_PjsUndefined) {
+        return 0;
+    } else {
+        PMC* do_call = get_global(interp, "do_call");
+        PMC* global_env = get_global_env(interp);
+        PMC* result;
+        sub = VTABLE_get_pointer(interp, sub); /* get pir_sub */
+        result = (PMC*) Parrot_runops_fromc_args(
+            interp, do_call, 
+            "PPPPP", sub,
+            obj,
+            global_env, /* TODO it should be a new scope, child of outerenv of function toString */
+            global_env);
+        *result_ptr = result;
+        return 1;
+    }
+}
+static INTVAL try_toString(Interp* interp, PMC* obj, PMC** result_ptr) {
+    PMC* res = NULL;
+    if (try_jsinvoke_noarg(interp, obj, "toString", &res)) {
+        if (is_js_primitive(interp, res)) {
+            *result_ptr = res;
+            return 1;
+        }
+    } 
+    return 0;
+}
+static INTVAL try_valueOf(Interp* interp, PMC* obj, PMC** result_ptr) {
+    PMC* res = NULL;
+    if (try_jsinvoke_noarg(interp, obj, "valueOf", &res)) {
+        if (is_js_primitive(interp, res)) {
+            *result_ptr = res;
+            return 1;
+        }
+    }
+    return 0;
+}
+static PMC* toPrimitive_hint_number(Interp* interp, PMC* obj) {
+    PMC* res = NULL;
+    if (try_valueOf(interp, obj, &res))
+        return res;
+    else if (try_toString(interp, obj, &res))
+        return res;
+    else {
+        real_exception(
+            interp, NULL, 
+            E_KeyError, /*TODO use a suitable error type*/
+            "Can't convert object to a primitive value.");
+        return NULL;
+    }
+}
+static PMC* toPrimitive_hint_string(Interp* interp, PMC* obj) {
+    PMC* res = NULL;
+    if (try_toString(interp, obj, &res))
+        return res;
+    else if (try_valueOf(interp, obj, &res))
+        return res;
+    else {
+        real_exception(
+            interp, NULL, 
+            E_KeyError, /*TODO use a suitable error type*/
+            "Can't convert object to a primitive value.");
+        return NULL;
+    }
+}
+static PMC* toPrimitive(Interp* interp, PMC* obj) {
+    if (VTABLE_exists_keyed_str(interp, obj, 
+            string_from_literal(interp, "__hintString__")))
+        return toPrimitive_hint_string(interp, obj);
+    else
+        return toPrimitive_hint_number(interp, obj);
+}
+
+VERSION = PARROT_VERSION;
+
+#define HASH_INDEX              0
+#define PARENT_INDEX            1
+#define VARIABLE_OBJECT_INDEX   2
+#define GLOBAL_OBJECT_INDEX     3
+
+ 
+ /* TODO Parrot_string_cstring needs freeing */
+
+inline op pjs_new_scope(out PMC) {
+    $1 = pmc_new(interp, enum_class_FixedPMCArray);
+    VTABLE_set_integer_native(interp, $1, 4);
+    PMC* hash = pmc_new(interp, dynpmc_PjsObject);
+    VTABLE_set_pmc_keyed_int(interp, $1, HASH_INDEX, hash);
+    VTABLE_set_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX, hash);
+    VTABLE_set_pmc_keyed_int(interp, $1, GLOBAL_OBJECT_INDEX, hash);
+    goto NEXT();
+}
+
+inline op pjs_new_scope_from_object(out PMC, in PMC) {
+    $1 = pmc_new(interp, enum_class_FixedPMCArray);
+    VTABLE_set_integer_native(interp, $1, 4);
+    VTABLE_set_pmc_keyed_int(interp, $1, HASH_INDEX, $2);
+    VTABLE_set_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX, $2);
+    VTABLE_set_pmc_keyed_int(interp, $1, GLOBAL_OBJECT_INDEX, $2);
+    goto NEXT();
+}
+
+inline op pjs_new_subscope(out PMC, in PMC) {
+    /* We assume that it is used as a new function frame, so
+     * we use the new scope hash as the variable object.
+     */
+    PMC *hash;
+    $1 = pmc_new(interp, enum_class_FixedPMCArray);
+    VTABLE_set_integer_native(interp, $1, 4);
+    hash = pmc_new(interp, dynpmc_PjsObject);
+    VTABLE_set_pmc_keyed_int(interp, $1, HASH_INDEX,   hash);
+    VTABLE_set_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX, hash);
+    VTABLE_set_pmc_keyed_int(interp, $1, PARENT_INDEX, $2);
+    VTABLE_set_pmc_keyed_int(interp, $1, GLOBAL_OBJECT_INDEX, 
+        VTABLE_get_pmc_keyed_int(interp, $2, GLOBAL_OBJECT_INDEX));
+    goto NEXT();
+}
+
+inline op pjs_augment_scope_chain_with(out PMC, in PMC, in PMC) {
+    /* $1 : the new scope chain
+     * $2 : scope chain
+     * $3 : object added at the front of the scope chain
+     * We use the variable object of the prevoius scope.
+     * The length of the array is 5 as a sign that the scope is created 
+     * with pjs_augment_scope_chain_with (later, it can be considered to
+     * store some flags there, but now it is not needed).
+     */
+    PMC *var_obj;
+    var_obj = VTABLE_get_pmc_keyed_int(interp, $2, VARIABLE_OBJECT_INDEX);
+    $1 = pmc_new(interp, enum_class_FixedPMCArray);
+    VTABLE_set_integer_native(interp, $1, 5);
+    VTABLE_set_pmc_keyed_int(interp, $1, HASH_INDEX, $3);
+    VTABLE_set_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX, var_obj);
+    VTABLE_set_pmc_keyed_int(interp, $1, PARENT_INDEX, $2);
+    VTABLE_set_pmc_keyed_int(interp, $1, GLOBAL_OBJECT_INDEX, 
+        VTABLE_get_pmc_keyed_int(interp, $2, GLOBAL_OBJECT_INDEX));
+    goto NEXT();
+}
+
+inline op pjs_find_lex(out PMC, in PMC, in PMC) {
+    PMC* scope = $2;
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+    for ( ; ;) {
+        if (VTABLE_exists_keyed(interp, hash, $3)) {
+            $1 = VTABLE_get_pmc_keyed(interp, hash, $3);
+            break;
+        } else if (VTABLE_exists_keyed_int(interp, scope, PARENT_INDEX)) {
+            /* there is a parent scope */
+            scope = VTABLE_get_pmc_keyed_int(interp, scope, PARENT_INDEX);
+            hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+        } else {
+            /* there is no parent scope */
+            real_exception(interp, NULL, E_KeyError, 
+                            "ReferenceError: %s is not defined",
+                            Parrot_string_cstring(interp, 
+                                VTABLE_get_string(interp, $3)));
+            break;
+        }
+    }
+    goto NEXT();
+}
+
+inline op pjs_find_lex(out PMC, in PMC, in STR) {
+    PMC* scope = $2;
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+    for ( ; ;) {
+        if (VTABLE_exists_keyed_str(interp, hash, $3)) {
+            $1 = VTABLE_get_pmc_keyed_str(interp, hash, $3);
+            break;
+        } else if (VTABLE_exists_keyed_int(interp, scope, PARENT_INDEX)) {
+            /* there is a parent scope */
+            scope = VTABLE_get_pmc_keyed_int(interp, scope, PARENT_INDEX);
+            hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+        } else {
+            /* there is no parent scope */
+            real_exception(interp, NULL, E_KeyError, 
+                            "ReferenceError: %s is not defined",
+                            Parrot_string_cstring(interp, $3));
+            break;
+        }
+    }
+    goto NEXT();
+}
+
+ /* Finds the lexical variable $3 in the given environment $2, and returns it
+  * in $1.
+  * Gets the default base object as argument in $4. If the scope was created with
+  * 'pjs_augment_scope_chain_with', set $4 to the object of of that scope.
+  */
+inline op pjs_find_lex_and_base(out PMC, in PMC, in STR, inout PMC) {
+    PMC* scope = $2;
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+    for ( ; ;) {
+        if (VTABLE_exists_keyed_str(interp, hash, $3)) {
+            $1 = VTABLE_get_pmc_keyed_str(interp, hash, $3);
+            if (VTABLE_get_integer(interp, scope) == 5) {
+                /* the scope was created with 'pjs_augment_scope_chain_with' */
+                $4 = hash;
+            } else {
+                $4 = VTABLE_get_pmc_keyed_int(interp, scope, GLOBAL_OBJECT_INDEX);
+            }
+            break;
+        } else if (VTABLE_exists_keyed_int(interp, scope, PARENT_INDEX)) {
+            /* there is a parent scope */
+            scope = VTABLE_get_pmc_keyed_int(interp, scope, PARENT_INDEX);
+            hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+        } else {
+            /* there is no parent scope */
+            real_exception(interp, NULL, E_KeyError, 
+                            "ReferenceError: %s is not defined",
+                            Parrot_string_cstring(interp, $3));
+            break;
+        }
+    }
+    goto NEXT();
+}
+
+inline op pjs_store_lex(in PMC, in PMC, in PMC) {
+    PMC* scope = $2;
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+    for ( ; ;) {
+        if (VTABLE_exists_keyed(interp, hash, $3)) {
+            VTABLE_set_pmc_keyed(interp, hash, $3, $1);
+            break;
+        } else if (VTABLE_exists_keyed_int(interp, scope, PARENT_INDEX)) {
+            /* there is a parent scope */
+            scope = VTABLE_get_pmc_keyed_int(interp, scope, PARENT_INDEX);
+            hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+        } else {
+            /* there is no parent scope */
+            VTABLE_set_pmc_keyed(interp, hash, $3, $1);
+            break;
+        }
+    }
+    goto NEXT();
+}
+
+inline op pjs_store_lex(in PMC, in PMC, in STR) {
+    PMC* scope = $2;
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+    for ( ; ;) {
+        if (VTABLE_exists_keyed_str(interp, hash, $3)) {
+            VTABLE_set_pmc_keyed_str(interp, hash, $3, $1);
+            break;
+        } else if (VTABLE_exists_keyed_int(interp, scope, PARENT_INDEX)) {
+            /* there is a parent scope */
+            scope = VTABLE_get_pmc_keyed_int(interp, scope, PARENT_INDEX);
+            hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
+        } else {
+            /* there is no parent scope */
+            VTABLE_set_pmc_keyed_str(interp, hash, $3, $1);
+            break;
+        }
+    }
+    goto NEXT();
+}
+
+inline op pjs_new_lex(in PMC, in PMC) {
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX);
+    if (! VTABLE_exists_keyed(interp, hash, $2)) {
+        VTABLE_set_pmc_keyed(interp, hash, $2, 
+                        pmc_new(interp, dynpmc_PjsUndefined));
+    }
+    goto NEXT();
+}
+
+inline op pjs_new_lex(in PMC, in STR) {
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX);
+    if (! VTABLE_exists_keyed_str(interp, hash, $2)) {
+        VTABLE_set_pmc_keyed_str(interp, hash, $2, 
+                        pmc_new(interp, dynpmc_PjsUndefined));
+    }
+    goto NEXT();
+}
+
+inline op pjs_new_lex_with_flags(in PMC, in PMC, in INT) {
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX);
+    if (! VTABLE_exists_keyed(interp, hash, $2)) {
+        VTABLE_set_pmc_keyed(interp, hash, $2, 
+                        pmc_new(interp, dynpmc_PjsUndefined));
+        VTABLE_set_integer_keyed(interp, hash, $2, $3);
+    }
+    goto NEXT();
+}
+
+inline op pjs_new_lex_with_flags(in PMC, in STR, in INT) {
+    PMC* hash = VTABLE_get_pmc_keyed_int(interp, $1, VARIABLE_OBJECT_INDEX);
+    if (! VTABLE_exists_keyed_str(interp, hash, $2)) {
+        VTABLE_set_pmc_keyed_str(interp, hash, $2, 
+                        pmc_new(interp, dynpmc_PjsUndefined));
+        VTABLE_set_integer_keyed_str(interp, hash, $2, $3);
+    }
+    goto NEXT();
+}
+
+inline op pjs_get_scope_object(out PMC, in PMC) {
+    $1 = VTABLE_get_pmc_keyed_int(interp, $2, HASH_INDEX);
+    goto NEXT();
+}
+
+inline op pjs_get_global(out PMC, in PMC) {
+    $1 = VTABLE_get_pmc_keyed_int(interp, $2, GLOBAL_OBJECT_INDEX);
+    goto NEXT();
+}
+
+inline op pjs_get_global_env(out PMC, in PMC) {
+    PMC* global_env = $2;
+    while (VTABLE_exists_keyed_int(interp, global_env, PARENT_INDEX))
+        global_env = VTABLE_get_pmc_keyed_int(interp, global_env, PARENT_INDEX);
+    $1 = global_env;
+    goto NEXT();
+}
+
+/*
+ $1: generated PIR code
+ $2: JS code
+ $3: should it be compiled as standalone PIR code (1), or
+     evaluated PIR code (0)
+*/
+inline op pjs_compile(out STR, in STR, in INT) {
+    STRING  *jscode = $2;
+    parrot_data to;
+    
+    to.interp = interp;
+    to.code = string_from_literal(interp, "");
+    
+    if (jscode == NULL) {
+        char *c_jscode = mem_sys_allocate(1);
+        c_jscode[0] = '\0';
+        js2pir(c_jscode, $3, &to);
+        mem_sys_free(c_jscode);
+    } else {
+        char *c_jscode = string_to_cstring(interp, jscode);
+        js2pir(c_jscode, $3, &to);
+        string_cstring_free(c_jscode);
+    }
+
+    $1 = to.code;
+    goto NEXT();
+}
+
+inline op pjs_file_path(out STR, in STR) {
+    $1 = Parrot_locate_runtime_file_str(interp, $2, PARROT_RUNTIME_FT_SOURCE);
+    if (string_length(interp, $1) == 0)
+        real_exception(interp, NULL, E_KeyError, 
+                            "File not found: %s",
+                            Parrot_string_cstring(interp, $2));
+    goto NEXT();
+}
+
+inline op pjs_to_primitive_hint_number(out PMC, in PMC) {
+    $1 = $2;
+    if (! is_js_primitive(interp, $2) && is_js_object(interp, $2))
+        $1 = toPrimitive_hint_number(interp, $2);
+    goto NEXT();
+}
+inline op pjs_to_primitive(out PMC, in PMC) {
+    $1 = $2;
+    if (! is_js_primitive(interp, $2) && is_js_object(interp, $2))
+        $1 = toPrimitive(interp, $2);
+    goto NEXT();
+}

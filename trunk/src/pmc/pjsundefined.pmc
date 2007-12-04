@@ -1,0 +1,393 @@
+#include "parrot/parrot.h"
+#include "pmc_pjsstring.h"
+#include "pmc_pjsnumber.h"
+#include "pjs_math.h"
+
+extern INTVAL dynpmc_PjsObject;
+extern INTVAL dynpmc_PjsFunction;
+extern INTVAL dynpmc_PjsArray;
+extern INTVAL dynpmc_PjsUndefined;
+extern INTVAL dynpmc_PjsNull;
+extern INTVAL dynpmc_PjsNumber;
+extern INTVAL dynpmc_PjsString;
+extern INTVAL dynpmc_PjsBoolean;
+extern INTVAL dynpmc_PjsPropEntry;
+extern INTVAL dynpmc_PjsSeq;
+
+extern void pjs_init_dynpmc_types(Interp* interp);
+extern PMC* toPrimitive(Interp* interp, PMC* object);
+
+pmclass PjsUndefined
+    dynpmc
+    group pjs_group
+    hll Pjs
+    maps Undef {
+
+    void class_init() {
+        if (pass) {
+            PMC* dummy = pmc_new(INTERP, enum_class_Integer
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            );
+            pjs_init_dynpmc_types(INTERP);
+        }
+    }
+
+    PMC* logical_not(PMC* dest) {
+        if (PMC_IS_NULL(dest))
+            dest = pmc_new(INTERP, enum_class_Boolean);
+
+        VTABLE_set_bool(INTERP, dest, 1);
+        return dest;
+    }
+    
+    INTVAL is_equal(PMC* value) {
+        MMD_PjsUndefined: {
+            return 1;
+        }
+        MMD_DEFAULT: {
+            return 0;
+        }
+    }
+
+    STRING* get_string() {
+        return string_from_literal(INTERP, "undefined");
+    }
+
+    METHOD STRING* getJsType() {
+        return string_from_literal(INTERP, "undefined");
+    }
+
+    INTVAL defined() {
+        return 0;
+    }
+    FLOATVAL get_number() {
+        return PJS_NAN;
+    }
+
+    opcode_t* invoke(void* next) {
+        real_exception(INTERP, NULL, E_NotImplementedError,
+                       "undefined can't be invoked!");
+        return NULL;
+    }
+    
+    /* Standard vtables for a primitive value */
+    
+        void morph(INTVAL new_type) {
+        pmc_reuse(INTERP, SELF, new_type, 0);
+    }
+
+    INTVAL get_bool() {
+        return 0;
+    }
+    void set_bool(INTVAL value) {
+        SELF.morph(dynpmc_PjsBoolean);
+        DYNSELF.set_bool(value);
+    }
+
+    void set_number_native(FLOATVAL value) {
+        SELF.morph(dynpmc_PjsNumber);
+        DYNSELF.set_number_native(value);
+    }
+
+    INTVAL get_integer() {
+        return 0;
+    }
+    void set_integer_native(INTVAL value) {
+        SELF.morph(dynpmc_PjsNumber);
+        DYNSELF.set_integer_native(value);
+    }
+
+    METHOD PMC* toPrimitive() {
+        return SELF;
+    }
+    METHOD PMC* toPrimitive_hint_string() {
+        return SELF;
+    }
+    METHOD PMC* toPrimitive_hint_number() {
+        return SELF;
+    }
+
+    PMC* add (PMC* value, PMC* dest) {
+        MMD_PjsString: {
+            STRING* str = VTABLE_get_string(INTERP, SELF);
+            STRING* str2 = VTABLE_get_string(INTERP, value);
+            if (PMC_IS_NULL(dest)) {
+                    dest = pmc_new(INTERP, dynpmc_PjsString);
+            } else if (dest->vtable->base_type != dynpmc_PjsString) {
+                    VTABLE_morph(INTERP, dest, dynpmc_PjsString);
+            }
+            VTABLE_set_string_native(INTERP, dest, 
+                string_concat(INTERP, str, str2, 0));
+            return dest;
+        }
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_ADD);
+        }
+        MMD_DEFAULT: {
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            VTABLE_set_number_native(INTERP, dest,
+                    DYNSELF.get_number() + VTABLE_get_number(INTERP, value));
+            return dest;
+        }
+    }
+
+    PMC* subtract (PMC* value, PMC* dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_SUBTRACT);
+        }
+        MMD_DEFAULT: {
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            VTABLE_set_number_native(INTERP, dest,
+                    DYNSELF.get_number() - VTABLE_get_number(INTERP, value));
+            return dest;
+        }
+    }
+    PMC* multiply (PMC* value, PMC* dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_MULTIPLY);
+        }
+        MMD_DEFAULT: {
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            VTABLE_set_number_native(INTERP, dest,
+                    DYNSELF.get_number() * VTABLE_get_number(INTERP, value));
+            return dest;
+        }
+    }
+    PMC* divide (PMC* value, PMC* dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_DIVIDE);
+        }
+        MMD_DEFAULT: {
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            VTABLE_set_number_native(INTERP, dest,
+                    DYNSELF.get_number() / VTABLE_get_number(INTERP, value));
+            return dest;
+        }
+    }
+    PMC* cmodulus(PMC *value, PMC *dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_DIVIDE);
+        }
+        MMD_DEFAULT: {
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            VTABLE_set_number_native(INTERP, dest,
+                    fmod(DYNSELF.get_number(), VTABLE_get_number(INTERP, value)));
+            return dest;
+        }
+    }
+    PMC* bitwise_shl(PMC *value, PMC *dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_BSL);
+        }
+        MMD_DEFAULT: {
+            INTVAL left;
+            UINTVAL right;
+            FLOATVAL temp;
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            temp = DYNSELF.get_number();
+            left = PJS_TO_INTVAL(temp);
+            temp = VTABLE_get_number(INTERP, value);
+            right = PJS_TO_UINTVAL(temp) & 0x1F;
+            VTABLE_set_number_native(INTERP, dest, left << right);
+            return dest;
+        }
+    }
+    PMC* bitwise_shr(PMC *value, PMC *dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_BSR);
+        }
+        MMD_DEFAULT: {
+            INTVAL left;
+            UINTVAL right;
+            FLOATVAL temp;
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            temp = DYNSELF.get_number();
+            left = PJS_TO_INTVAL(temp);
+            temp = VTABLE_get_number(INTERP, value);
+            right = PJS_TO_UINTVAL(temp) & 0x1F;
+            VTABLE_set_number_native(INTERP, dest, left >> right);
+            return dest;
+        }
+    }
+    PMC* bitwise_lsr(PMC *value, PMC *dest) {
+        MMD_PjsObject: {
+            return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_LSR);
+        }
+        MMD_DEFAULT: {
+            INTVAL left;
+            UINTVAL right;
+            FLOATVAL temp;
+            if (PMC_IS_NULL(dest)) {
+                dest = pmc_new(INTERP, dynpmc_PjsNumber);
+            } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+                VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+            }
+            temp = DYNSELF.get_number();
+            left = PJS_TO_UINTVAL(temp);
+            temp = VTABLE_get_number(INTERP, value);
+            right = PJS_TO_UINTVAL(temp) & 0x1F;
+            VTABLE_set_number_native(INTERP, dest, left >> right);
+            return dest;
+        }
+    }
+    INTVAL cmp (PMC* value) {
+        FLOATVAL left = DYNSELF.get_number();
+        FLOATVAL right = VTABLE_get_number(INTERP, value);
+        if (left < right)
+            return -1;
+        else if(left > right)
+            return 1;
+        else
+            return 0;
+    }
+    PMC* bitwise_and(PMC* value, PMC* dest) {
+        FLOATVAL a, b;
+        if (PMC_IS_NULL(dest)) {
+            dest = pmc_new(INTERP, dynpmc_PjsNumber);
+        } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+            VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+        }
+        a = DYNSELF.get_number();
+        b = VTABLE_get_number(INTERP, value);
+        VTABLE_set_number_native(INTERP, dest, 
+                                    PJS_TO_INTVAL(a) & PJS_TO_INTVAL(b));
+        return dest;
+    }
+    PMC* bitwise_or(PMC* value, PMC* dest) {
+        FLOATVAL a, b;
+        if (PMC_IS_NULL(dest)) {
+            dest = pmc_new(INTERP, dynpmc_PjsNumber);
+        } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+            VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+        }
+        a = DYNSELF.get_number();
+        b = VTABLE_get_number(INTERP, value);
+        VTABLE_set_number_native(INTERP, dest, 
+                                    PJS_TO_INTVAL(a) | PJS_TO_INTVAL(b));
+        return dest;
+    }
+    PMC* bitwise_xor(PMC* value, PMC* dest) {
+        FLOATVAL a, b;
+        if (PMC_IS_NULL(dest)) {
+            dest = pmc_new(INTERP, dynpmc_PjsNumber);
+        } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
+            VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
+        }
+        a = DYNSELF.get_number();
+        b = VTABLE_get_number(INTERP, value);
+        VTABLE_set_number_native(INTERP, dest, 
+                                    PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
+        return dest;
+    }
+    void i_bitwise_xor(PMC* value) {
+        FLOATVAL a, b;
+        a = DYNSELF.get_number();
+        b = VTABLE_get_number(INTERP, value);
+        DYNSELF.set_number_native(PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
+    }
+}

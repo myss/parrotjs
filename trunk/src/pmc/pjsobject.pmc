@@ -1,0 +1,539 @@
+#include "parrot/parrot.h"
+#include "pjsstructs.h"
+#include "pmc_pjsnumber.h"
+#include "pjs_math.h"
+
+
+#define HASH(pmc)  PMC_struct_val(pmc)
+#define PROTO(pmc) PMC_pmc_val(pmc)
+
+#define PROP_FLAGS(prop) (((pjs_prop_entry_struct*) PMC_struct_val(prop))->flags)
+#define PROP_CONTENT(prop) PMC_pmc_val(prop)
+
+#define DEFAULT_VALUE_TYPE_NUMBER 0
+#define DEFAULT_VALUE_TYPE_STRING 1
+
+
+extern INTVAL dynpmc_PjsObject;
+extern INTVAL dynpmc_PjsFunction;
+extern INTVAL dynpmc_PjsArray;
+extern INTVAL dynpmc_PjsUndefined;
+extern INTVAL dynpmc_PjsNull;
+extern INTVAL dynpmc_PjsNumber;
+extern INTVAL dynpmc_PjsString;
+extern INTVAL dynpmc_PjsBoolean;
+extern INTVAL dynpmc_PjsPropEntry;
+extern INTVAL dynpmc_PjsSeq;
+
+extern void pjs_init_dynpmc_types(Interp* interp);
+
+
+/* Needed for executing the Spidermonkey test suite.
+   Spidermonkey wants obj.__proto__
+ */
+#define __PROTO__ATTR_ 1
+
+static STRING* STR_global_env;
+static STRING* STR_toString;
+static STRING* STR_valueOf;
+static STRING* STR_object;
+
+#if __PROTO__ATTR_
+static STRING* STR__proto__;
+static STRING* STR_PjsObject;
+#endif
+
+
+static void pjs_set_prototype(Interp* interp, PMC* obj, PMC* proto) {
+    PMC *p;
+    if (PMC_IS_NULL(proto)                              || 
+        proto->vtable->base_type == dynpmc_PjsNull      ||
+        proto->vtable->base_type == dynpmc_PjsUndefined ||
+        proto->vtable->base_type == enum_class_Undef    )  {
+            proto = 0;
+    }
+    p = proto;
+    
+    while (p && p != obj)
+        p = PROTO(p);
+    
+    if (p == obj)
+        real_exception(interp, NULL, INVALID_OPERATION, 
+            "Cyclic prototype chain!");
+    else
+        PROTO(obj) = proto;
+}
+static PMC* pjs_get_prototype(Interp* interp, PMC* obj) {
+    PMC* proto = PROTO(obj);
+    if (! proto)
+        proto = pmc_new(interp, dynpmc_PjsNull);
+    return proto;
+}
+
+
+
+static INTVAL is_js_primitive(Interp* interp, PMC* val) {
+    int t = val->vtable->base_type;
+    return
+        t == dynpmc_PjsNumber  ||
+        t == dynpmc_PjsString  ||
+        t == dynpmc_PjsBoolean ||
+        t == dynpmc_PjsNull    ||
+        t == dynpmc_PjsUndefined;
+}
+static PMC* get_global_env(Interp* interp) {
+    PMC * const hll_ns = Parrot_get_ctx_HLL_namespace(interp);
+    PMC * global_env = Parrot_get_global(interp, hll_ns, STR_global_env);
+    return global_env;
+}
+static PMC* get_global_obj(Interp* interp) {
+    PMC * global_env = get_global_env(interp);
+    PMC * global_obj = VTABLE_get_pmc_keyed_int(interp, global_env, 0);
+    return global_obj;
+}
+static PMC* get_global(Interp* interp, const char* c_name) {
+    STRING * name = string_from_cstring(interp, c_name, 0);
+    PMC * hll_ns = Parrot_get_ctx_HLL_namespace(interp);
+    PMC * obj = Parrot_get_global(interp, hll_ns, name);
+    return obj;
+}
+
+
+static INTVAL try_jsinvoke_noarg(   Interp* interp, 
+                                    PMC* obj, 
+                                    STRING* meth_name, 
+                                    PMC** result_ptr        ) {
+    PMC* sub = VTABLE_get_pmc_keyed_str(interp, obj, meth_name);
+    if (PMC_IS_NULL(sub) || sub->vtable->base_type == dynpmc_PjsUndefined) {
+        return 0;
+    } else {
+        PMC* do_call = get_global(interp, "do_call");
+        PMC* global_env = get_global_env(interp);
+        PMC* result;
+        sub = (PMC*) VTABLE_get_pointer(interp, sub); /* get pir_sub */
+        result = (PMC*) Parrot_runops_fromc_args(
+            interp, do_call, 
+            "PPPPP", sub,
+            obj,
+            global_env, /* TODO it should be a new scope, child of outerenv of function toString */
+            global_env);
+        *result_ptr = result;
+        return 1;
+    }
+}
+static INTVAL try_toString(Interp* interp, PMC* obj, PMC** result_ptr) {
+    PMC* res = NULL;
+    if (try_jsinvoke_noarg(interp, obj, string_from_literal(interp, "toString"), &res)) {
+        if (is_js_primitive(interp, res)) {
+            *result_ptr = res;
+            return 1;
+        }
+    } 
+    return 0;
+}
+static INTVAL try_valueOf(Interp* interp, PMC* obj, PMC** result_ptr) {
+    PMC* res = NULL;
+    if (try_jsinvoke_noarg(interp, obj, string_from_literal(interp, "valueOf"), &res)) {
+        if (is_js_primitive(interp, res)) {
+            *result_ptr = res;
+            return 1;
+        }
+    }
+    return 0;
+}
+PMC* toPrimitive_hint_number(Interp* interp, PMC* obj) {
+    PMC* res = NULL;
+    if (try_valueOf(interp, obj, &res))
+        return res;
+    else if (try_toString(interp, obj, &res))
+        return res;
+    else {
+        real_exception(
+            interp, NULL, 
+            E_KeyError, /*TODO use a suitable error type*/
+            "Can't convert object to a primitive value.");
+        return NULL;
+    }
+}
+PMC* toPrimitive_hint_string(Interp* interp, PMC* obj) {
+    PMC* res = NULL;
+    if (try_toString(interp, obj, &res))
+        return res;
+    else if (try_valueOf(interp, obj, &res))
+        return res;
+    else {
+        real_exception(
+            interp, NULL, 
+            E_KeyError, /*TODO use a suitable error type*/
+            "Can't convert object to a primitive value.");
+        return NULL;
+    }
+}
+PMC* toPrimitive(Interp* interp, PMC* obj) {
+    if (VTABLE_exists_keyed_str(interp, obj, 
+            string_from_literal(interp, "__hintString__")))
+        return toPrimitive_hint_string(interp, obj);
+    else
+        return toPrimitive_hint_number(interp, obj);
+}
+
+
+typedef int pmc_predicate_t(PMC* pmc);
+
+static int canEnum(PMC* pmc) {
+    if (pmc && pmc->vtable->base_type == dynpmc_PjsPropEntry) {
+        return (PROP_FLAGS(pmc) & 2) == 0;
+    } else {
+        return 1;
+    }
+}
+
+static void addAll(Interp* interp, PMC* fromHash, PMC* toHash, pmc_predicate_t pred) {
+    PMC* iter = pmc_new_init(interp, enum_class_Iterator, fromHash);
+    while (VTABLE_get_bool(interp, iter)) {
+        PMC* key = VTABLE_shift_pmc(interp, iter);
+        PMC* value = VTABLE_get_pmc_keyed(interp, fromHash, key);
+        if (pred(value))
+            VTABLE_set_pmc_keyed(interp, toHash, key, value);
+    }
+}
+
+static INTVAL delProp_str(Interp* interp, PMC* pmc, STRING* key) {
+    PMC* hash = (PMC*) HASH(pmc);
+    PMC* oldValue = VTABLE_get_pmc_keyed_str(interp, hash, key);
+    if (PMC_IS_NULL(oldValue)) {
+        return 1;
+    } else if (oldValue->vtable->base_type == dynpmc_PjsPropEntry) {
+        INTVAL flags = PROP_FLAGS(oldValue);
+        if (! (flags & PJS_HASH_ENTRY__DONT_DELETE)) {
+            VTABLE_delete_keyed_str(interp, hash, key);
+            return 1;
+        } else {
+            return 0;
+        }
+    } else {
+        VTABLE_delete_keyed_str(interp, (PMC*) HASH(pmc), key);
+        return 1;
+    }
+}
+
+pmclass PjsObject
+    does scalar
+    dynpmc
+    group pjs_group
+    hll Pjs {
+    
+    void class_init() {
+        if (pass) {
+            pjs_init_dynpmc_types(INTERP);
+            
+            STR_global_env  =   const_string(INTERP, "global_env");
+            STR_toString    =   const_string(INTERP, "toString");
+            STR_valueOf     =   const_string(INTERP, "valueOf");
+            STR_object      =   const_string(INTERP, "object");
+                
+#if __PROTO__ATTR_
+            STR__proto__    =   const_string(INTERP, "__proto__");
+            STR_PjsObject   =   const_string(INTERP, "PjsObject");
+#endif
+        }
+    }
+    
+    void init() {
+        /* prototype */
+        PROTO(SELF) = 0;
+        HASH(SELF) = pmc_new(INTERP, enum_class_Hash);
+        PObj_custom_mark_SET(SELF);
+    }
+    
+    /*METHOD void setHash(PMC* hash) {
+        HASH(SELF) = hash;
+    }*/
+    
+    void mark() {
+        if (PMC_pmc_val(SELF))
+            pobject_lives(INTERP, (PObj*) PMC_pmc_val(SELF));
+        if (PMC_struct_val(SELF))
+            pobject_lives(INTERP, (PObj*) PMC_struct_val(SELF));
+    }
+    
+    /*PMC* get_pmc_keyed(PMC* key) {
+        return SELF.get_pmc_keyed_str(VTABLE_get_string(INTERP, key));
+    }*/
+
+    PMC* get_pmc_keyed(PMC* key) {
+        PMC* value = VTABLE_get_pmc_keyed(INTERP, (PMC*) HASH(SELF), key);
+#if __PROTO__ATTR_
+        if (string_equal(INTERP, STR__proto__, 
+                                VTABLE_get_string(INTERP, key)) == 0) {
+            return pjs_get_prototype(INTERP, SELF);
+        }
+#endif
+        if (! PMC_IS_NULL(value)) {
+            if (value->vtable->base_type == dynpmc_PjsPropEntry) {
+                value = PROP_CONTENT(value);
+                if (! PMC_IS_NULL(value))
+                    return value;
+                else {
+                    PMC* proto = PROTO(SELF);
+                    if (proto)
+                        return VTABLE_get_pmc_keyed(INTERP, proto, key);
+                    else
+                        return pmc_new(INTERP, dynpmc_PjsUndefined);
+                }
+            } else {
+                return value;
+            }
+        } else {
+            PMC* proto = PROTO(SELF);
+            if (proto)
+                return VTABLE_get_pmc_keyed(INTERP, proto, key);
+            else
+                return pmc_new(INTERP, dynpmc_PjsUndefined);
+        }
+    }
+    
+    PMC* get_pmc_keyed_str(STRING* key) {
+        PMC* proto = SELF;
+#if __PROTO__ATTR_
+        if (string_equal(INTERP, STR__proto__, key) == 0) {
+            return pjs_get_prototype(INTERP, SELF);
+        }
+#endif
+        while (proto) {
+            PMC* value = VTABLE_get_pmc_keyed_str(INTERP, (PMC*) HASH(proto), key);
+            if (! PMC_IS_NULL(value)) {
+                if (value->vtable->base_type == dynpmc_PjsPropEntry) {
+                    value = PROP_CONTENT(value);
+                    if (! PMC_IS_NULL(value))
+                        return value;
+                    else
+                        proto = PROTO(proto);
+                } else {
+                    return value;
+                }
+            } else {
+                proto = PROTO(proto);
+            }
+        }
+        return pmc_new(INTERP, dynpmc_PjsUndefined);
+    }
+    
+    void set_pmc_keyed(PMC* key, PMC* value) {
+        SELF.set_pmc_keyed_str(VTABLE_get_string(INTERP, key), value);
+    }
+    
+    void set_pmc_keyed_str(STRING* key, PMC* value) {
+        PMC* hash = (PMC*) HASH(SELF);
+        PMC* oldValue = VTABLE_get_pmc_keyed_str(INTERP, hash, key);
+#if __PROTO__ATTR_
+        if (string_equal(INTERP, STR__proto__, key) == 0) {
+            pjs_set_prototype(INTERP, SELF, value);
+            return;
+        }
+#endif
+        if (PMC_IS_NULL(oldValue)) {
+            VTABLE_set_pmc_keyed_str(INTERP, hash, key, value);
+        } else  if (oldValue->vtable->base_type == dynpmc_PjsPropEntry) {
+            INTVAL flags = PROP_FLAGS(oldValue);
+            if (! (flags & PJS_HASH_ENTRY__READ_ONLY)) {
+                PROP_CONTENT(oldValue) = value;
+            }
+        } else {
+            VTABLE_set_pmc_keyed_str(INTERP, hash, key, value);
+        }
+    }
+
+    INTVAL exists_keyed(PMC* key) {
+        return SELF.exists_keyed_str(VTABLE_get_string(INTERP, key));
+    }
+    
+    INTVAL exists_keyed_str(STRING* key) {
+        PMC* proto = SELF;
+#if __PROTO__ATTR_
+        if (string_equal(INTERP, STR__proto__, key) == 0) {
+            proto = PROTO(SELF);
+            return ! (PMC_IS_NULL(proto));
+        }
+#endif
+        while (proto) {
+            if(VTABLE_exists_keyed_str(INTERP, (PMC*) HASH(proto), key))
+                return 1;
+            proto = PROTO(proto);
+        }
+        return 0;
+    }
+    
+    STRING* get_string() {
+        PMC* res = NULL;
+        if (try_jsinvoke_noarg(INTERP, SELF, STR_toString, &res)) {
+            assert(res != NULL);
+            if (is_js_primitive(INTERP, res))
+                return VTABLE_get_string(INTERP, res);
+        }
+        real_exception(INTERP, NULL, INVALID_OPERATION, 
+                    "Does not know how to stringify object");
+        return NULL;
+    }
+    FLOATVAL get_number() {
+        PMC* res = NULL;
+        if (try_jsinvoke_noarg(INTERP, SELF, STR_valueOf, &res)) {
+            assert(res != NULL);
+            if (is_js_primitive(INTERP, res))
+                return VTABLE_get_number(INTERP, res);
+        }
+        return PJS_NAN;
+    }
+    INTVAL get_integer() {
+        FLOATVAL f = DYNSELF.get_number();
+        return PJS_TO_INTVAL(f);
+    }
+    
+    INTVAL get_bool() {
+        return 1;
+    }
+    
+    METHOD INTVAL deleteProperty_str(STRING* key) {
+        return delProp_str(INTERP, SELF, key);
+    }
+    METHOD INTVAL deleteProperty(PMC* key) {
+        return delProp_str(INTERP, SELF, 
+            VTABLE_get_string(INTERP, key));
+    }
+    
+    /* set flags */
+    void set_integer_keyed(PMC* key, INTVAL flags) {
+        SELF.set_integer_keyed_str(VTABLE_get_string(INTERP, key), flags);
+    }
+    /* get flags */
+    void set_integer_keyed_str(STRING* key, INTVAL flags) {
+        PMC* value = VTABLE_get_pmc_keyed_str(INTERP, (PMC*) HASH(SELF), key);
+        if (PMC_IS_NULL(value)) {
+            PMC* propentry = pmc_new_init(
+                INTERP, 
+                dynpmc_PjsPropEntry, 
+                PMCNULL);
+            PROP_FLAGS(propentry) = flags;
+            VTABLE_set_pmc_keyed_str(INTERP, (PMC*) HASH(SELF), key, propentry);
+        } else if (value->vtable->base_type == dynpmc_PjsPropEntry) {
+            PROP_FLAGS(value) = flags;
+        } else {
+            PMC* propentry = pmc_new_init(
+                INTERP, 
+                dynpmc_PjsPropEntry, 
+                value);
+            PROP_FLAGS(propentry) = flags;
+            VTABLE_set_pmc_keyed_str(INTERP, (PMC*) HASH(SELF), key, propentry);
+        }
+    }
+
+    INTVAL get_integer_keyed(PMC* key) {
+        return SELF.get_integer_keyed_str(VTABLE_get_string(INTERP, key));
+    }
+    INTVAL get_integer_keyed_str(STRING* key) {
+        PMC* value = VTABLE_get_pmc_keyed_str(INTERP, (PMC*) HASH(SELF), key);
+        if (PMC_IS_NULL(value)) {
+            return 0;
+        } else if (value->vtable->base_type == dynpmc_PjsPropEntry) {
+            return PROP_FLAGS(value);
+        } else {
+            return 0;
+        }
+    }
+    
+    /* It is used to get the PjsObject pointer of an object. Subclasses
+       should NOT override this. */
+    PMC* get_pmc() {
+        return SELF;
+    }
+
+    /* return all enumerable properties in a hash */
+    PMC* get_iter() {
+        PMC* hash = pmc_new(INTERP, enum_class_Hash);
+        PMC* proto = SELF;
+        while (proto) {
+            addAll(INTERP, (PMC*) HASH(proto), hash, canEnum);
+            proto = PROTO(proto);
+        }
+        return pmc_new_init(INTERP, enum_class_Iterator, hash);
+    }
+
+    METHOD void setProto(PMC* proto) {
+        pjs_set_prototype(INTERP, SELF, proto);
+    }
+    METHOD PMC* getProto() {
+        return pjs_get_prototype(INTERP, SELF);
+    }
+
+    METHOD PMC* toObject() {
+        return SELF;
+    }
+    METHOD STRING* getJsType() {
+        return STR_object;
+    }
+    
+    INTVAL cmp (PMC* value) {
+        FLOATVAL left = DYNSELF.get_number();
+        FLOATVAL right = VTABLE_get_number(INTERP, value);
+        if (left < right)
+            return -1;
+        else if(left > right)
+            return 1;
+        else
+            return 0;
+    }
+    INTVAL is_equal(PMC* value) {
+        MMD_PjsObject: {
+            return value == SELF;
+        }
+        MMD_DEFAULT: {
+            return 0;
+        }
+    }
+    
+    METHOD PMC* get_elem(PMC* key) {
+        return VTABLE_get_pmc_keyed(INTERP, 
+                                    SELF, 
+                                    key);
+    }
+    
+    PMC* get_attr_str(STRING* key) {
+        return VTABLE_get_pmc_keyed_str(INTERP, SELF, key);
+    }
+    
+    void set_attr_str(STRING* key, PMC* value) {
+        VTABLE_set_pmc_keyed_str(INTERP, SELF, key, value);
+    }
+    
+    PMC* find_method(STRING* meth_name) {
+        PMC* meth = SUPER(meth_name);
+        if (PMC_IS_NULL(meth))
+            meth = DYNSELF.get_pmc_keyed_str(meth_name);
+        return meth;
+    }
+    
+    PMC* add(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_ADD);
+    }
+    PMC* subtract(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_SUBTRACT);
+    }
+    PMC* multiply(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_MULTIPLY);
+    }
+    PMC* divide(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_DIVIDE);
+    }
+    PMC* cmodulus(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_CMOD);
+    }
+    PMC* bitwise_shl(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_BSL);
+    }
+    PMC* bitwise_shr(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_BSR);
+    }
+    PMC* bitwise_lsr(PMC* value, PMC* dest) {
+        return mmd_dispatch_p_ppp(INTERP, toPrimitive(INTERP, SELF), value, dest, MMD_LSR);
+    }
+}

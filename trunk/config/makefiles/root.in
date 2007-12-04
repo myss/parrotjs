@@ -1,0 +1,202 @@
+RM_F    = @rm_f@
+PERL    = @perl@
+PARROT  = ../../parrot@exe@
+PBC_MERGE = ../../pbc_merge@exe@
+PGE      = $(PARROT) ../../compilers/pge/pgc.pir
+TGE      = $(PARROT) ../../compilers/tge/tgc.pir
+
+PMCBUILD = $(PERL) @build_dir@/tools/build/dynpmc.pl
+OPSBUILD = $(PERL) @build_dir@/tools/build/dynoplibs.pl
+LIBPATH  = lib
+PMCDIR   = src/pmc
+OPSDIR   = src/ops
+OPSLIB    = pjs_group
+OPS_FILES = $(OPSDIR)/pjs_group.ops
+DESTDIR  = @build_dir@/runtime/parrot/dynext
+O        = @o@
+LOAD_EXT = @load_ext@
+PARROT_DYNEXT = @build_dir@/runtime/parrot/dynext
+
+PARSER_PREFIX = pjs_yy
+
+COMPILER_DIR = src/compiler
+
+CFLAGS = -Wall -g -c -fPIC -I@build_dir@/include/ -I.
+LFLAGS = 
+
+SHARED_LIBS = $(PMCDIR)/pjs_group$(LOAD_EXT) $(OPSDIR)/pjs_ops$(LOAD_EXT)
+
+PMCS = \
+ pjsobject \
+ pjspropentry \
+ pjsnull \
+ pjsundefined \
+ pjsstring \
+ pjsboolean \
+ pjsnumber \
+ pjsfunction \
+ pjsarray \
+ pjsseq
+
+PMC_FILES = \
+ $(PMCDIR)/pjsobject.pmc \
+ $(PMCDIR)/pjspropentry.pmc \
+ $(PMCDIR)/pjsstructs.h \
+ $(PMCDIR)/pjsundefined.pmc \
+ $(PMCDIR)/pjsnull.pmc \
+ $(PMCDIR)/pjsstring.pmc \
+ $(PMCDIR)/pjsboolean.pmc \
+ $(PMCDIR)/pjsnumber.pmc \
+ $(PMCDIR)/pjsfunction.pmc \
+ $(PMCDIR)/pjsarray.pmc \
+ $(PMCDIR)/pjsseq.pmc
+
+COMPILER_FILES = \
+ $(COMPILER_DIR)/emit$(O) \
+ $(COMPILER_DIR)/emit_ops$(O) \
+ $(COMPILER_DIR)/lex.pjs_yy$(O) \
+ $(COMPILER_DIR)/list$(O) \
+ $(COMPILER_DIR)/mempool$(O) \
+ $(COMPILER_DIR)/nodes$(O) \
+ $(COMPILER_DIR)/params$(O) \
+ $(COMPILER_DIR)/parser.tab$(O) \
+ $(COMPILER_DIR)/transform$(O) \
+ $(COMPILER_DIR)/str_escaping$(O)
+
+LIB_PBCS = \
+ $(LIBPATH)/jscore.pbc \
+ $(LIBPATH)/stdlib.pbc
+
+all: \
+ $(PMCDIR)/pjs_group$(LOAD_EXT) \
+ $(OPSDIR)/pjs_ops$(LOAD_EXT) \
+ $(LIB_PBCS) \
+ $(GEN_PBC) \
+ $(LIBPATH)/stdlib.pir
+
+
+$(PMCDIR)/pjs_group$(LOAD_EXT) : $(PMC_FILES) $(PMCDIR)/pjs_math.h
+	@cd $(PMCDIR) && $(PMCBUILD) generate $(PMCS)
+	@cd $(PMCDIR) && $(PMCBUILD) compile $(PMCS)
+	@cd $(PMCDIR) && $(PMCBUILD) linklibs $(PMCS)
+	@cd $(PMCDIR) && $(PMCBUILD) copy "--destination=$(PARROT_DYNEXT)" $(PMCS)
+
+$(OPSDIR)/pjs_ops$(LOAD_EXT) : $(OPS_FILES) $(COMPILER_FILES)
+	@cd $(OPSDIR) && $(OPSBUILD) generate $(OPSLIB)
+	@cd $(OPSDIR) && $(OPSBUILD) compile $(OPSLIB)
+	@cd $(OPSDIR) && $(OPSBUILD) linklibs $(OPSLIB) ../../$(COMPILER_DIR)/*$(O)
+	@cd $(OPSDIR) && $(OPSBUILD) copy "--destination=$(DESTDIR)" $(OPSLIB)
+
+
+INCLUDED_PIRS = \
+ $(LIBPATH)/jscore_includes/comparison.pir \
+ $(LIBPATH)/jscore_includes/conversions.pir \
+ $(LIBPATH)/jscore_includes/js_function_subs.pir \
+ $(LIBPATH)/jscore_includes/pjsfunction.pir
+
+$(LIBPATH)/jscore.pbc: $(LIBPATH)/jscore.pir $(INCLUDED_PIRS) $(SHARED_LIBS)
+	$(PARROT) --output=$(LIBPATH)/jscore.pbc $(LIBPATH)/jscore.pir
+
+$(LIBPATH)/stdlib.pbc: $(LIBPATH)/stdlib.pir $(SHARED_LIBS)
+	$(PARROT) --output=$(LIBPATH)/stdlib.pbc $(LIBPATH)/stdlib.pir
+
+$(LIBPATH)/stdlib.pir: $(LIBPATH)/stdlib.js
+	../../parrot pjs.pir --compile $(LIBPATH)/stdlib.js >$(LIBPATH)/stdlib.pir
+
+
+
+$(COMPILER_DIR)/emit_ops$(O): $(COMPILER_DIR)/emit.h $(COMPILER_DIR)/emit_ops.c $(COMPILER_DIR)/mempool.h $(COMPILER_DIR)/nodes.h $(COMPILER_DIR)/list.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/emit_ops.c
+	
+$(COMPILER_DIR)/transform$(O): $(COMPILER_DIR)/transform.c $(COMPILER_DIR)/transform.h $(COMPILER_DIR)/nodes.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/transform.c
+
+$(COMPILER_DIR)/mempool$(O): $(COMPILER_DIR)/mempool.h $(COMPILER_DIR)/mempool.c
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/mempool.c
+
+$(COMPILER_DIR)/prettyprint$(O): $(COMPILER_DIR)/prettyprint.h $(COMPILER_DIR)/prettyprint.c $(COMPILER_DIR)/mempool.h $(COMPILER_DIR)/nodes.h $(COMPILER_DIR)/list.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/prettyprint.c
+
+$(COMPILER_DIR)/emit$(O): $(COMPILER_DIR)/emit.h $(COMPILER_DIR)/emit.c $(COMPILER_DIR)/str_escaping.c $(COMPILER_DIR)/mempool.h $(COMPILER_DIR)/nodes.h $(COMPILER_DIR)/list.h $(COMPILER_DIR)/parser.tab.h 
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/emit.c
+	
+$(COMPILER_DIR)/list$(O): $(COMPILER_DIR)/list.c $(COMPILER_DIR)/list.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/list.c
+
+$(COMPILER_DIR)/params$(O): $(COMPILER_DIR)/params.c $(COMPILER_DIR)/params.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/params.c
+
+$(COMPILER_DIR)/nodes$(O): $(COMPILER_DIR)/nodes.c $(COMPILER_DIR)/nodes.h $(COMPILER_DIR)/list.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/nodes.c
+
+$(COMPILER_DIR)/parser.tab$(O): $(COMPILER_DIR)/parser.tab.c $(COMPILER_DIR)/str_escaping.c $(COMPILER_DIR)/parser.tab.h $(COMPILER_DIR)/nodes.h $(COMPILER_DIR)/params.h $(COMPILER_DIR)/list.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/parser.tab.c
+
+$(COMPILER_DIR)/lex.$(PARSER_PREFIX)$(O): $(COMPILER_DIR)/lex.$(PARSER_PREFIX).c $(COMPILER_DIR)/params.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/lex.$(PARSER_PREFIX).c
+
+$(COMPILER_DIR)/lex.$(PARSER_PREFIX).c: $(COMPILER_DIR)/lexer.l
+	flex -P $(PARSER_PREFIX) -o $@ $(COMPILER_DIR)/lexer.l
+
+$(COMPILER_DIR)/parser.tab.h: $(COMPILER_DIR)/parser.y
+	bison -d -o $(COMPILER_DIR)/parser.tab.c $(COMPILER_DIR)/parser.y
+
+$(COMPILER_DIR)/parser.tab.c: $(COMPILER_DIR)/parser.y
+	bison -d -o $(COMPILER_DIR)/parser.tab.c $(COMPILER_DIR)/parser.y
+
+$(COMPILER_DIR)/str_escaping$(O): $(COMPILER_DIR)/str_escaping.c $(COMPILER_DIR)/str_escaping.h
+	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/str_escaping.c
+
+test: t/importing/x.pir t/importing/x.pbc t/importing/z.pir t/importing/z.pbc t/importing/dir/y.pir t/importing/dir/y.pbc
+	./doTest.sh
+
+t/importing/x.pir: t/importing/x.js
+	../../parrot pjs.pir -c t/importing/x.js >t/importing/x.pir
+
+t/importing/z.pir: t/importing/z.js
+	../../parrot pjs.pir -c t/importing/z.js >t/importing/z.pir
+
+t/importing/dir/y.pir: t/importing/dir/y.js
+	../../parrot pjs.pir -c t/importing/dir/y.js >t/importing/dir/y.pir
+
+t/importing/x.pbc: t/importing/x.pir
+	../../parrot -o t/importing/x.pbc t/importing/x.pir
+
+t/importing/z.pbc: t/importing/z.pir
+	../../parrot -o t/importing/z.pbc t/importing/z.pir
+
+t/importing/dir/y.pbc: t/importing/dir/y.pir
+	../../parrot -o t/importing/dir/y.pbc t/importing/dir/y.pir
+
+
+operator-test:
+	./doTest.sh --operator
+
+
+BUILD_CLEANERS = \
+ "$(PMCDIR)/*.dump" \
+ "$(PMCDIR)/*.c" \
+ "$(PMCDIR)/pmc_*.h" \
+ "$(PMCDIR)/*$(LOAD_EXT)" \
+ "$(PMCDIR)/*$(O)" \
+ "$(OPSDIR)/*$(LOAD_EXT)" \
+ "$(OPSDIR)/*$(O)" \
+ "$(OPSDIR)/*.c" \
+ "$(OPSDIR)/$(OPSLIB)_*" \
+ "$(LIBPATH)/*.pbc" \
+ "$(LIBPATH)/stdlib.pir" \
+ $(COMPILER_DIR)/*$(O) \
+ $(COMPILER_DIR)/parser.tab.c \
+ $(COMPILER_DIR)/parser.tab.h \
+ $(COMPILER_DIR)/lex.$(PARSER_PREFIX).c \
+ t/importing/*.pir t/importing/*.pbc t/importing/dir/*.pir t/importing/dir/*.pbc
+ 
+
+clean:
+	$(RM_F) $(BUILD_CLEANERS)
+
+realclean: clean
+	$(RM_F) Makefile
+
+distclean: realclean
+

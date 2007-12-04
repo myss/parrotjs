@@ -1,0 +1,95 @@
+#include "parrot/parrot.h"
+
+typedef struct func_data {
+    PMC* pir_sub;
+    PMC* outer_env;
+} func_data;
+
+#define PIR_SUB(pmc)    ((func_data*) PMC_data(pmc))->pir_sub
+#define OUTER_ENV(pmc)  ((func_data*) PMC_data(pmc))->outer_env
+
+pmclass PjsFunction
+    extends PjsObject
+    does scalar
+    dynpmc
+    need_ext
+    group pjs_group
+    hll Pjs  {
+    
+    
+    void init() {
+        PjsObject.SELF.init();
+        PMC_data(SELF) = (func_data*) mem_sys_allocate_zeroed(sizeof(func_data));
+        PIR_SUB(SELF)   = PMCNULL;
+        OUTER_ENV(SELF) = PMCNULL;
+        PObj_custom_mark_destroy_SETALL(SELF);
+    }
+    
+    void init_pmc(PMC* sub) {
+        PjsObject.SELF.init();
+        PMC_data(SELF) = (func_data*) mem_sys_allocate_zeroed(sizeof(func_data));
+        PIR_SUB(SELF)   = sub;
+        OUTER_ENV(SELF) = PMCNULL;
+        PObj_custom_mark_destroy_SETALL(SELF);
+    }
+    
+        
+    void destroy() {
+        if (PMC_data(SELF)) {
+            mem_sys_free(PMC_data(SELF));
+            PMC_data(SELF) = NULL;
+        }
+    }
+    
+    void mark() {
+        if (PMC_data(SELF)) {
+            if (! PMC_IS_NULL(PIR_SUB(SELF)))
+                pobject_lives(INTERP, (PObj*) PIR_SUB(SELF));
+            if (! PMC_IS_NULL(OUTER_ENV(SELF)))
+                pobject_lives(INTERP, (PObj*) OUTER_ENV(SELF));
+        }
+        SUPER();
+    }
+    
+    METHOD void set_pir_sub(PMC* sub) {
+        PIR_SUB(SELF) = sub;
+    }
+    
+    METHOD PMC* get_pir_sub() {
+        return PIR_SUB(SELF);
+    }
+    
+    METHOD void set_outer_env(PMC* env) {
+        OUTER_ENV(SELF) = env;
+    }
+    
+    METHOD PMC* get_outer_env() {
+        return OUTER_ENV(SELF);
+    }
+    
+    METHOD STRING* getJsType() {
+        return string_from_literal(INTERP, "function");
+    }
+    
+    void* get_pointer_keyed_int(INTVAL key) {
+        if (key == 0)
+            return PIR_SUB(SELF);
+        else 
+            return OUTER_ENV(SELF);
+    }
+    void* get_pointer() {
+        return PIR_SUB(SELF);
+    }
+    
+    opcode_t* invoke(void* next) {
+        /* TODO dirty hack with global called_func, 
+            waiting for rt #42919 to be resolved. */
+        PMC * const hll_ns = Parrot_get_ctx_HLL_namespace(interp);
+        Parrot_set_global(interp, hll_ns, 
+            string_from_literal(interp, "called_func"), SELF);
+        PMC * invoker = Parrot_get_global(interp, hll_ns, 
+            string_from_literal(interp, "invoke_from_outside"));
+
+        return VTABLE_invoke(INTERP, invoker, next);
+    }
+}

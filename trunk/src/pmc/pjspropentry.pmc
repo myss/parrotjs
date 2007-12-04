@@ -1,0 +1,37 @@
+
+#include "parrot/parrot.h"
+
+#include "pjsstructs.h"
+
+
+pmclass PjsPropEntry
+    dynpmc
+    group pjs_group
+    hll Pjs {
+    
+    void init() {
+        PMC_pmc_val(SELF) = NULL;
+        PMC_struct_val(SELF) = mem_sys_allocate(sizeof(pjs_prop_entry_struct));
+        ((pjs_prop_entry_struct*) PMC_struct_val(SELF))->flags = 0;
+        PObj_custom_mark_destroy_SETALL(SELF);
+    }
+    
+    void init_pmc(PMC* content) {
+        PMC_pmc_val(SELF) = content;
+        PMC_struct_val(SELF) = mem_sys_allocate(sizeof(pjs_prop_entry_struct));
+        ((pjs_prop_entry_struct*) PMC_struct_val(SELF))->flags = 0;
+        PObj_custom_mark_destroy_SETALL(SELF);
+    }
+    
+    void mark() {
+        if (PMC_pmc_val(SELF))
+            pobject_lives(INTERP, (PObj*) PMC_pmc_val(SELF));
+    }
+    void destroy() {
+        if (PMC_struct_val(SELF)) {
+            mem_sys_free(PMC_struct_val(SELF));
+            PMC_struct_val(SELF) = NULL;
+        }
+    }
+
+}

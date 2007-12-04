@@ -1,0 +1,39 @@
+#include "parrot/parrot.h"
+
+extern INTVAL dynpmc_PjsNumber;
+extern void pjs_init_dynpmc_types(Interp* interp);
+
+#define CURRENT(pmc)    PMC_int_val(pmc)
+#define LIMIT(pmc)      PMC_int_val2(pmc)
+
+pmclass PjsSeq
+    dynpmc
+    group pjs_group
+    hll Pjs  {
+    
+    void class_init() {
+        if (pass) {
+            pjs_init_dynpmc_types(INTERP);
+        }
+    }
+    
+    void init_pmc(PMC* limit) {
+        CURRENT(SELF)   = 0;
+        LIMIT(SELF)     = VTABLE_get_integer(INTERP, limit);
+    }
+    
+    INTVAL get_bool() {
+        return CURRENT(SELF) < LIMIT(SELF);
+    }
+    
+    STRING* shift_string() {
+        INTVAL i = CURRENT(SELF);
+        PMC* res = pmc_new(INTERP, dynpmc_PjsNumber);
+        
+        assert(i < LIMIT(SELF));
+        
+        VTABLE_set_integer_native(INTERP, res, i);
+        CURRENT(SELF) = i+1;
+        return VTABLE_get_string(INTERP, res);
+    }
+}
