@@ -1,0 +1,15 @@
+#include "parrot/parrot.h"
+
+
+pmclass Test
+    dynpmc
+    group pjs_group
+    hll Pjs {
+    
+    void set_integer_native(INTVAL ignore) {
+        int i;
+        for(i=0;i<10000000;i++) {
+            STRING* s = string_from_literal(INTERP, "hello world");
+        }
+    }
+}

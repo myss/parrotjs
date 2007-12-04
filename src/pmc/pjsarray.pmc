@@ -1,0 +1,156 @@
+#include "parrot/parrot.h"
+#include "pjs_math.h"
+
+extern INTVAL dynpmc_PjsObject;
+extern INTVAL dynpmc_PjsFunction;
+extern INTVAL dynpmc_PjsArray;
+extern INTVAL dynpmc_PjsUndefined;
+extern INTVAL dynpmc_PjsNull;
+extern INTVAL dynpmc_PjsNumber;
+extern INTVAL dynpmc_PjsString;
+extern INTVAL dynpmc_PjsBoolean;
+extern INTVAL dynpmc_PjsPropEntry;
+extern INTVAL dynpmc_PjsSeq;
+
+extern void pjs_init_dynpmc_types(Interp* interp);
+
+static STRING* STR_length;
+static STRING* STR_toString;
+
+#define GET_ARRAY(pmc)         ((PMC*) PMC_data(pmc))
+#define SET_ARRAY(pmc, arr)    PMC_data(pmc) = arr
+
+#define KEY_NORMAL 0
+#define KEY_INDEX  1
+#define KEY_LENGTH 2
+
+/*
+    returns 
+        KEY_LENGTH for key "length",
+        KEY_INDEX  for integer key (changes index parameter),
+        KEY_NORMAL otherwise (changes prop_name parameter),
+*/
+static INTVAL test_key(Interp* interp, PMC* key, INTVAL* index, STRING** prop_name) {
+    STRING* key_str = VTABLE_get_string(interp, key);
+    
+    if (string_equal(interp, STR_length, key_str) == 0) {
+        return KEY_LENGTH;
+    } else {
+        FLOATVAL f;
+        if (key->vtable->base_type != dynpmc_PjsString) {
+            key = pmc_new(interp, dynpmc_PjsString);
+            VTABLE_set_string_native(interp, key, key_str);
+        }
+        f = VTABLE_get_number(interp, key);
+        if (PJS_IS_UINTVAL(f)) {
+            *index = PJS_TO_UINTVAL(f);
+            return KEY_INDEX;
+        } else {
+            *prop_name = key_str;
+            return KEY_NORMAL;
+        }
+    }
+}
+
+pmclass PjsArray
+    extends PjsObject
+    does scalar
+    dynpmc
+    need_ext
+    group pjs_group
+    hll Pjs  {
+    
+    void class_init() {
+        if (pass) {
+            pjs_init_dynpmc_types(INTERP);
+            STR_length   = const_string(INTERP, "length");
+            STR_toString = const_string(INTERP, "toString");
+        }
+    }
+    void init() {
+        SUPER();
+        SET_ARRAY(SELF, pmc_new(INTERP, enum_class_ResizablePMCArray));
+        PObj_custom_mark_SET(SELF);
+    }
+
+    void mark() {
+        pobject_lives(INTERP, (PObj*) GET_ARRAY(SELF));
+        SUPER();
+    }
+
+    PMC* get_attr_str(STRING* key_str) {
+        PMC* key = pmc_new(INTERP, dynpmc_PjsString);
+        VTABLE_set_string_native(INTERP, key, key_str);
+        return DYNSELF.get_pmc_keyed(key);
+    }
+    PMC* get_pmc_keyed(PMC* key) {
+        INTVAL index;
+        STRING* prop_name;
+        INTVAL key_type = test_key(INTERP, key, &index, &prop_name);
+        if (key_type == KEY_LENGTH) {
+            INTVAL len = VTABLE_elements(INTERP, GET_ARRAY(SELF));
+            PMC* res = pmc_new(INTERP, dynpmc_PjsNumber);
+            VTABLE_set_number_native(INTERP, res, len);
+            return res;
+        } else if (key_type == KEY_INDEX) {
+            PMC* arr = GET_ARRAY(SELF);
+            INTVAL len = VTABLE_elements(INTERP, arr);
+            if (index < len) { /* because even lookup changes ResizablePMCArray's size */
+                PMC* res = VTABLE_get_pmc_keyed_int(INTERP, arr, index);
+                if (res != PMCNULL && res->vtable->base_type != enum_class_Undef)
+                    return res;
+            }
+        }
+        return SUPER(key);
+    }
+    void set_attr_str(STRING* key_str, PMC* value) {
+        PMC* key = pmc_new(INTERP, dynpmc_PjsString);
+        VTABLE_set_string_native(INTERP, key, key_str);
+        DYNSELF.set_pmc_keyed(key, value);
+    }
+    void set_pmc_keyed(PMC* key, PMC* value) {
+        INTVAL index;
+        STRING* prop_name;
+        INTVAL key_type = test_key(INTERP, key, &index, &prop_name);
+        if (key_type == KEY_LENGTH) {
+            FLOATVAL len = VTABLE_get_number(INTERP, value);
+            if (! PJS_IS_UINTVAL(len)) {
+                real_exception(INTERP, NULL, INVALID_OPERATION, 
+                    "Invalid array length.");
+            }
+            VTABLE_set_integer_native(INTERP, GET_ARRAY(SELF), PJS_TO_UINTVAL(len));
+        } else if (key_type == KEY_INDEX) {
+            PMC* arr = GET_ARRAY(SELF);
+            VTABLE_set_pmc_keyed_int(INTERP, arr, index, value);
+        } else {
+            SUPER(key, value);
+        }
+    }
+    
+    INTVAL exists_keyed(PMC* key) {
+        INTVAL index;
+        STRING* prop_name;
+        INTVAL key_type = test_key(INTERP, key, &index, &prop_name);
+        if (key_type == KEY_LENGTH) {
+            return 1;
+        } else if (key_type == KEY_INDEX) {
+            PMC* arr = GET_ARRAY(SELF);
+            INTVAL len = VTABLE_elements(INTERP, arr);
+            if (index >= 0 && index < len) {
+                PMC* elem = VTABLE_get_pmc_keyed_int(INTERP, arr, index);
+                if (elem != PMCNULL && elem->vtable->base_type != enum_class_Undef)
+                    return 1;
+            }
+        }
+        return SUPER(key);
+    }
+
+    /* return all enumerable properties in a hash */
+    PMC* get_iter() {
+        PMC* len = pmc_new(INTERP, dynpmc_PjsNumber);
+        VTABLE_set_integer_native(INTERP, len, 
+                VTABLE_elements(INTERP, GET_ARRAY(SELF)));
+        return pmc_new_init(INTERP, dynpmc_PjsSeq, len);
+    }
+
+}
