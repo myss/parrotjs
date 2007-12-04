@@ -1,0 +1,56 @@
+Platforms
+=========
+
+PJS should compile on any linux box which contains enough development tools 
+(gcc, flex, bison, etc.) I didn't try to compile it in any other platform, 
+but it should be doable.
+
+We recommend that you use the last version of Parrot. We tested the current
+version of PJS with Parrot 0.5.0
+
+
+How to build?
+=============
+
+- download the parrot source code (see http://www.parrotcode.org/source.html)
+
+- go into parrot_dir/languages/ and do: svn checkout http://parrotjs.googlecode.com/svn/trunk/ parrotjs-read-only
+
+- rename parrotjs to pjs
+
+- add 'pjs' to parrot_dir/config/gen/languages.pm (just add the word 'pjs' next to other languages).
+
+- append two lines to parrot_dir/src/call_list.txt, one containing 'v JOPI' and one containing 'I JOP'
+
+- go to parrot_dir/ and do:
+  
+    $ perl Configure.pl && make
+
+- go to parrot_dir/languages/pjs/ and do:
+
+    $ make
+
+
+
+How to run?
+===========
+
+To run a javascript file, go to parrot_dir/languages/pjs/ and do:
+
+    $ ../../parrot pjs.pir myfile.js
+
+If you want to compile to PIR code, do:
+
+    $ ../../parrot pjs.pir -c myfile.js
+
+
+
+Testing
+=======
+
+You can test PJS by 'make test', but therefore you need the spidermonkey interpreter 
+and you need to have it available in your path with the name 'js'.
+
+
+author: Mehmet [dot] Yavuz [dot] Selim [at] gmail [dot] com
+
