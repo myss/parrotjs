@@ -1,0 +1,14 @@
+print("a");
+print('b');
+print(true);
+print(false);
+print(1);
+print(1.5);
+print(548e76);
+print(76458769763875.786675536345326);
+print(null);
+print(undefined);
+print(NaN);
+print(-NaN);
+print(Infinity);
+print(-Infinity);
