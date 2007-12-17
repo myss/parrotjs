@@ -25,86 +25,6 @@ pmclass PjsUndefined
 
     void class_init() {
         if (pass) {
-            PMC* dummy = pmc_new(INTERP, enum_class_Integer
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            );
             pjs_init_dynpmc_types(INTERP);
         }
     }
@@ -149,7 +69,7 @@ pmclass PjsUndefined
     
     /* Standard vtables for a primitive value */
     
-        void morph(INTVAL new_type) {
+    void morph(INTVAL new_type) {
         pmc_reuse(INTERP, SELF, new_type, 0);
     }
 

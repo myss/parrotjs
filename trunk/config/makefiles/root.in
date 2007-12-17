@@ -147,7 +147,10 @@ $(COMPILER_DIR)/parser.tab.c: $(COMPILER_DIR)/parser.y
 $(COMPILER_DIR)/str_escaping$(O): $(COMPILER_DIR)/str_escaping.c $(COMPILER_DIR)/str_escaping.h
 	gcc ${CFLAGS} -o $@ $(COMPILER_DIR)/str_escaping.c
 
-test: t/importing/x.pir t/importing/x.pbc t/importing/z.pir t/importing/z.pbc t/importing/dir/y.pir t/importing/dir/y.pbc
+
+import_test_files: t/importing/x.pir t/importing/x.pbc t/importing/z.pir t/importing/z.pbc t/importing/dir/y.pir t/importing/dir/y.pbc
+
+test: import_test_files
 	./doTest.sh
 
 t/importing/x.pir: t/importing/x.js

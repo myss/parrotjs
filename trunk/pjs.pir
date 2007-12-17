@@ -152,7 +152,7 @@
     goto ex
   loop:
     $P1 = pio.'readline'('pjs> ')
-    if null $P1  goto ex
+    if null $P1 goto ex
     $S0 = $P1
     push_eh eval_error
     $S0 = pjs_compile $S0, 0
