@@ -1,5 +1,7 @@
 #!/bin/bash
 
+make import_test_files >/dev/null 2>/dev/null
+
 echo "Does testing without logging."
 
 PJS="../../parrot pjs.pir"
