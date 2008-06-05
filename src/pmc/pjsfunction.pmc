@@ -18,7 +18,7 @@ pmclass PjsFunction
     
     
     void init() {
-        PjsObject.SELF.init();
+        SUPER();
         PMC_data(SELF) = (func_data*) mem_sys_allocate_zeroed(sizeof(func_data));
         PIR_SUB(SELF)   = PMCNULL;
         OUTER_ENV(SELF) = PMCNULL;
@@ -26,7 +26,7 @@ pmclass PjsFunction
     }
     
     void init_pmc(PMC* sub) {
-        PjsObject.SELF.init();
+        Parrot_PjsObject_init(INTERP, SELF); // better way?
         PMC_data(SELF) = (func_data*) mem_sys_allocate_zeroed(sizeof(func_data));
         PIR_SUB(SELF)   = sub;
         OUTER_ENV(SELF) = PMCNULL;
@@ -51,24 +51,28 @@ pmclass PjsFunction
         SUPER();
     }
     
-    METHOD void set_pir_sub(PMC* sub) {
+    METHOD set_pir_sub(PMC* sub) {
         PIR_SUB(SELF) = sub;
     }
     
-    METHOD PMC* get_pir_sub() {
-        return PIR_SUB(SELF);
+    METHOD get_pir_sub() {
+        PMC* pir_sub = PIR_SUB(SELF);
+        RETURN(PMC* pir_sub);
     }
     
-    METHOD void set_outer_env(PMC* env) {
+    METHOD set_outer_env(PMC* env) {
+        PMC* hash = PMC_struct_val(SELF);
         OUTER_ENV(SELF) = env;
     }
     
-    METHOD PMC* get_outer_env() {
-        return OUTER_ENV(SELF);
+    METHOD get_outer_env() {
+        PMC* outer_env = OUTER_ENV(SELF);
+        RETURN(PMC* outer_env);
     }
     
-    METHOD STRING* getJsType() {
-        return string_from_literal(INTERP, "function");
+    METHOD getJsType() {
+        STRING* js_type = string_from_literal(INTERP, "function");
+        RETURN(STRING* js_type);
     }
     
     void* get_pointer_keyed_int(INTVAL key) {

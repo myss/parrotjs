@@ -72,7 +72,7 @@ pmclass PjsBoolean
     
     INTVAL is_equal(PMC* value) {
         MMD_PjsBoolean: {
-            INTVAL a = DYNSELF.get_bool();
+            INTVAL a = SELF.get_bool();
             INTVAL b = VTABLE_get_bool(INTERP, value);
             return a == b;
         }
@@ -81,8 +81,9 @@ pmclass PjsBoolean
         }
     }
 
-    METHOD STRING* getJsType() {
-        return string_from_literal(INTERP, "boolean");
+    METHOD getJsType() {
+        STRING* js_type = string_from_literal(INTERP, "boolean");
+        RETURN(STRING* js_type);
     }
 
     STRING* get_string() {
@@ -104,14 +105,17 @@ pmclass PjsBoolean
         pmc_reuse(INTERP, SELF, new_type, 0);
     }
 
-    METHOD PMC* toPrimitive() {
-        return SELF;
+    METHOD toPrimitive() {
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
-    METHOD PMC* toPrimitive_hint_string() {
-        return SELF;
+    METHOD toPrimitive_hint_string() {
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
-    METHOD PMC* toPrimitive_hint_number() {
-        return SELF;
+    METHOD toPrimitive_hint_number() {
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
 
     PMC* logical_not(PMC* dest) {
@@ -119,7 +123,7 @@ pmclass PjsBoolean
             dest = pmc_new(INTERP, dynpmc_PjsBoolean);
         else
             VTABLE_morph(INTERP, dest, dynpmc_PjsBoolean);
-        VTABLE_set_bool(INTERP, dest, ! DYNSELF.get_bool());
+        VTABLE_set_bool(INTERP, dest, ! SELF.get_bool());
         return dest;
     }
 
@@ -146,7 +150,7 @@ pmclass PjsBoolean
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() + VTABLE_get_number(INTERP, value));
+                    SELF.get_number() + VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -162,7 +166,7 @@ pmclass PjsBoolean
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() - VTABLE_get_number(INTERP, value));
+                    SELF.get_number() - VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -177,7 +181,7 @@ pmclass PjsBoolean
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() * VTABLE_get_number(INTERP, value));
+                    SELF.get_number() * VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -192,7 +196,7 @@ pmclass PjsBoolean
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() / VTABLE_get_number(INTERP, value));
+                    SELF.get_number() / VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -207,7 +211,7 @@ pmclass PjsBoolean
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    fmod(DYNSELF.get_number(), VTABLE_get_number(INTERP, value)));
+                    fmod(SELF.get_number(), VTABLE_get_number(INTERP, value)));
             return dest;
         }
     }
@@ -224,7 +228,7 @@ pmclass PjsBoolean
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_INTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -245,7 +249,7 @@ pmclass PjsBoolean
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_INTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -266,7 +270,7 @@ pmclass PjsBoolean
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_UINTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -275,7 +279,7 @@ pmclass PjsBoolean
         }
     }
     INTVAL cmp (PMC* value) {
-        FLOATVAL left = DYNSELF.get_number();
+        FLOATVAL left = SELF.get_number();
         FLOATVAL right = VTABLE_get_number(INTERP, value);
         if (left < right)
             return -1;
@@ -291,7 +295,7 @@ pmclass PjsBoolean
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) & PJS_TO_INTVAL(b));
@@ -304,7 +308,7 @@ pmclass PjsBoolean
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) | PJS_TO_INTVAL(b));
@@ -317,7 +321,7 @@ pmclass PjsBoolean
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
@@ -325,9 +329,9 @@ pmclass PjsBoolean
     }
     void i_bitwise_xor(PMC* value) {
         FLOATVAL a, b;
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
-        DYNSELF.set_number_native(PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
+        SELF.set_number_native(PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
     }
 
 }

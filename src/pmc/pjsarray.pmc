@@ -81,7 +81,7 @@ pmclass PjsArray
     PMC* get_attr_str(STRING* key_str) {
         PMC* key = pmc_new(INTERP, dynpmc_PjsString);
         VTABLE_set_string_native(INTERP, key, key_str);
-        return DYNSELF.get_pmc_keyed(key);
+        return SELF.get_pmc_keyed(key);
     }
     PMC* get_pmc_keyed(PMC* key) {
         INTVAL index;
@@ -106,7 +106,7 @@ pmclass PjsArray
     void set_attr_str(STRING* key_str, PMC* value) {
         PMC* key = pmc_new(INTERP, dynpmc_PjsString);
         VTABLE_set_string_native(INTERP, key, key_str);
-        DYNSELF.set_pmc_keyed(key, value);
+        SELF.set_pmc_keyed(key, value);
     }
     void set_pmc_keyed(PMC* key, PMC* value) {
         INTVAL index;
