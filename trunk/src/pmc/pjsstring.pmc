@@ -41,7 +41,7 @@ to_num(Interp *interp, const STRING *s)
     DECL_CONST_CAST;
 
     if (s) {
-        char * const cstr = string_to_cstring(interp, const_cast(s));
+        char * const cstr = string_to_cstring(interp, s);
         
         const char *start = cstr; /* after the trailing whitespace at the begin */
         const char *end; /* before the trailing whitespace at the end */
@@ -106,7 +106,7 @@ pmclass PjsString
             return mmd_dispatch_p_ppp(INTERP, SELF, toPrimitive(INTERP, value), dest, MMD_ADD);
         }
         MMD_DEFAULT: {
-            STRING* str = DYNSELF.get_string();
+            STRING* str = SELF.get_string();
             STRING* str2 = VTABLE_get_string(INTERP, value);
             if (PMC_IS_NULL(dest))
                 dest = pmc_new(INTERP, SELF->vtable->base_type);
@@ -129,7 +129,7 @@ pmclass PjsString
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() - VTABLE_get_number(INTERP, value));
+                    SELF.get_number() - VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -144,7 +144,7 @@ pmclass PjsString
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() * VTABLE_get_number(INTERP, value));
+                    SELF.get_number() * VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -159,7 +159,7 @@ pmclass PjsString
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    DYNSELF.get_number() / VTABLE_get_number(INTERP, value));
+                    SELF.get_number() / VTABLE_get_number(INTERP, value));
             return dest;
         }
     }
@@ -174,7 +174,7 @@ pmclass PjsString
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
             VTABLE_set_number_native(INTERP, dest,
-                    fmod(DYNSELF.get_number(), VTABLE_get_number(INTERP, value)));
+                    fmod(SELF.get_number(), VTABLE_get_number(INTERP, value)));
             return dest;
         }
     }
@@ -191,7 +191,7 @@ pmclass PjsString
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_INTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -212,7 +212,7 @@ pmclass PjsString
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_INTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -233,7 +233,7 @@ pmclass PjsString
             } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
                 VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
             }
-            temp = DYNSELF.get_number();
+            temp = SELF.get_number();
             left = PJS_TO_UINTVAL(temp);
             temp = VTABLE_get_number(INTERP, value);
             right = PJS_TO_UINTVAL(temp) & 0x1F;
@@ -248,7 +248,7 @@ pmclass PjsString
             return string_compare(INTERP, s, v);
         }
         MMD_DEFAULT: {
-            FLOATVAL left = DYNSELF.get_number();
+            FLOATVAL left = SELF.get_number();
             FLOATVAL right = VTABLE_get_number(INTERP, value);
             if (left < right)
                 return -1;
@@ -275,7 +275,7 @@ pmclass PjsString
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) & PJS_TO_INTVAL(b));
@@ -288,7 +288,7 @@ pmclass PjsString
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) | PJS_TO_INTVAL(b));
@@ -301,7 +301,7 @@ pmclass PjsString
         } else if (dest->vtable->base_type != dynpmc_PjsNumber) {
             VTABLE_morph(INTERP, dest, dynpmc_PjsNumber);
         }
-        a = DYNSELF.get_number();
+        a = SELF.get_number();
         b = VTABLE_get_number(INTERP, value);
         VTABLE_set_number_native(INTERP, dest, 
                                     PJS_TO_INTVAL(a) ^ PJS_TO_INTVAL(b));
@@ -309,19 +309,23 @@ pmclass PjsString
     }
 
     INTVAL get_bool() {
-        return string_length(INTERP, DYNSELF.get_string()) != 0;
+        return string_length(INTERP, SELF.get_string()) != 0;
     }
-    METHOD STRING* getJsType() {
-        return string_from_literal(INTERP, "string");
+    METHOD getJsType() {
+        STRING* js_type = string_from_literal(INTERP, "string");
+        RETURN(STRING* js_type);
     }
     METHOD PMC* toPrimitive() {
-        return SELF;
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
     METHOD PMC* toPrimitive_hint_string() {
-        return SELF;
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
     METHOD PMC* toPrimitive_hint_number() {
-        return SELF;
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
 
 }

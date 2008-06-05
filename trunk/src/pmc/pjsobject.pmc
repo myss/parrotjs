@@ -385,7 +385,7 @@ pmclass PjsObject
         return PJS_NAN;
     }
     INTVAL get_integer() {
-        FLOATVAL f = DYNSELF.get_number();
+        FLOATVAL f = SELF.get_number();
         return PJS_TO_INTVAL(f);
     }
     
@@ -393,12 +393,14 @@ pmclass PjsObject
         return 1;
     }
     
-    METHOD INTVAL deleteProperty_str(STRING* key) {
-        return delProp_str(INTERP, SELF, key);
+    METHOD deleteProperty_str(STRING* key) {
+        INTVAL result = delProp_str(INTERP, SELF, key);
+        RETURN(INTVAL result);
     }
-    METHOD INTVAL deleteProperty(PMC* key) {
-        return delProp_str(INTERP, SELF, 
+    METHOD deleteProperty(PMC* key) {
+        INTVAL result = delProp_str(INTERP, SELF, 
             VTABLE_get_string(INTERP, key));
+        RETURN(INTVAL result);
     }
     
     /* set flags */
@@ -458,22 +460,25 @@ pmclass PjsObject
         return pmc_new_init(INTERP, enum_class_Iterator, hash);
     }
 
-    METHOD void setProto(PMC* proto) {
+    METHOD setProto(PMC* proto) {
         pjs_set_prototype(INTERP, SELF, proto);
     }
-    METHOD PMC* getProto() {
-        return pjs_get_prototype(INTERP, SELF);
+    METHOD getProto() {
+        PMC* proto = pjs_get_prototype(INTERP, SELF);
+        RETURN(PMC* proto);
     }
 
-    METHOD PMC* toObject() {
-        return SELF;
+    METHOD toObject() {
+        PMC* me = SELF;
+        RETURN(PMC* me);
     }
-    METHOD STRING* getJsType() {
-        return STR_object;
+    METHOD getJsType() {
+        STRING* js_type = STR_object;
+        RETURN(STRING* js_type);
     }
     
     INTVAL cmp (PMC* value) {
-        FLOATVAL left = DYNSELF.get_number();
+        FLOATVAL left = SELF.get_number();
         FLOATVAL right = VTABLE_get_number(INTERP, value);
         if (left < right)
             return -1;
@@ -491,10 +496,11 @@ pmclass PjsObject
         }
     }
     
-    METHOD PMC* get_elem(PMC* key) {
-        return VTABLE_get_pmc_keyed(INTERP, 
-                                    SELF, 
-                                    key);
+    METHOD get_elem(PMC* key) {
+        PMC* elem = VTABLE_get_pmc_keyed(INTERP, 
+                                        SELF, 
+                                        key);
+        RETURN(PMC* elem);
     }
     
     PMC* get_attr_str(STRING* key) {
@@ -508,7 +514,7 @@ pmclass PjsObject
     PMC* find_method(STRING* meth_name) {
         PMC* meth = SUPER(meth_name);
         if (PMC_IS_NULL(meth))
-            meth = DYNSELF.get_pmc_keyed_str(meth_name);
+            meth = SELF.get_pmc_keyed_str(meth_name);
         return meth;
     }
     
