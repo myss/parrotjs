@@ -214,7 +214,7 @@ WS                  {HWS}|{VWS}
 "native"       { COUNT; BEGIN(REGEX); DEBUG("NATIVE");        return(NATIVE); }
 "synchronized" { COUNT; BEGIN(REGEX); DEBUG("SYNCHRONIZED");  return(SYNCHRONIZED); }
 "float"        { COUNT; BEGIN(REGEX); DEBUG("FLOAT");         return(FLOAT); }
-"package"      { COUNT; BEGIN(REGEX); DEBUG("PACKAGE");       return(PACKAGE); }
+"package"      { COUNT; BEGIN(REGEX); DEBUG("PACKAGE");       return(PACKAGE_); }
 "throws"       { COUNT; BEGIN(REGEX); DEBUG("THROWS");        return(THROWS); }
 "goto"         { COUNT; BEGIN(REGEX); DEBUG("GOTO");          return(GOTO); }
 "private"      { COUNT; BEGIN(REGEX); DEBUG("PRIVATE");       return(PRIVATE); }

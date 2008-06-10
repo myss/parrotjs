@@ -55,4 +55,7 @@ void emit_strict_binop (
 void emit_binop(Node left, Node right, int op, int destReg, Naming naming, parrot_data* to);
 void emit_unop(Node expr, int op, int destReg, Naming naming, parrot_data* to);
 void emit_assignment(Node expr, int destReg, Naming naming, parrot_data* to);
+
+char* escapeForLabel(const char* str);
+
 #endif

@@ -35,6 +35,20 @@ void emit(parrot_data* to, const char *format, ...) {
     to->code = string_append(to->interp, to->code, written);
 }
 
+char* escapeForLabel(const char* str) {
+    int len = strlen(str);
+    char* result = (char*) malloc(len + 1);
+    int i;
+    for (i=0; i<len; i++) {
+        char ch = str[i];
+        if (ch == '$')
+            ch = '@';
+        result[i] = ch;
+    }
+    result[len] = '\0';
+    return result;
+}
+
 
 static void emit_newObject(int destReg, Naming naming, parrot_data* to) {
     int protoReg = naming.regNo++;
@@ -857,9 +871,10 @@ static void emit_params(PjsList params, Naming naming, parrot_data* to) {
     emit(to, "    .param pmc @env_0\n");
     emit(to, "    .param pmc @dyn_env\n");
     for (entry = params->start; entry; entry = entry->next) {
-        char* param = (char*) entry->elem;
-        emit(to, "    .param pmc par@%s :optional\n", param);
-        emit(to, "    .param int has@%s :opt_flag\n", param);
+        char* escapedParam = escapeForLabel((char*) entry->elem);
+        emit(to, "    .param pmc par@%s :optional\n", escapedParam);
+        emit(to, "    .param int has@%s :opt_flag\n", escapedParam);
+        free(escapedParam);
     }
     emit(to, "    .param pmc @rest :slurpy\n\n");
     
@@ -875,21 +890,24 @@ static void emit_params(PjsList params, Naming naming, parrot_data* to) {
     emit(to, "    .local pmc @undefined\n");
     emit(to, "    @undefined = new 'PjsUndefined'\n\n");
     for (entry = params->start; entry; entry = entry->next) {
-        char* param = (char*) entry->elem;
-        emit(to, "    if has@%s goto @default_val_%d\n", param, *naming.labelNo);
-        emit(to, "    par@%s = @undefined\n", param);
+        char* escapedParam = escapeForLabel((char*) entry->elem);
+        emit(to, "    if has@%s goto @default_val_%d\n", escapedParam, *naming.labelNo);
+        emit(to, "    par@%s = @undefined\n", escapedParam);
         emit(to, "  @default_val_%d:\n", *naming.labelNo);
         ++(*naming.labelNo);
+        free(escapedParam);
     }
     emit(to, "\n");
     
     /* Store the parameters in the environment */
     for (entry = params->start; entry; entry = entry->next) {
         char* param = (char*) entry->elem;
+        char* escapedParam = escapeForLabel(param);
         emit(to, "    pjs_new_lex_with_flags @env_%d, '%s', %d\n", 
             naming.scopeNo, param,
             PJS_HASH_ENTRY__DONT_DELETE);
-        emit(to, "    pjs_store_lex par@%s, @env_%d, '%s'\n", param, naming.scopeNo, param);
+        emit(to, "    pjs_store_lex par@%s, @env_%d, '%s'\n", escapedParam, naming.scopeNo, param);
+        free(escapedParam);
     }
     emit(to, "\n");
 }
