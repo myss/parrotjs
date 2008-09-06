@@ -17,16 +17,16 @@
 
 #include "parrot/parrot.h"
 #include "parrot/misc.h"
-
-
-#define EXCEPTION_MSG_INDEX 0
-#define EXCEPTION_JSOBJ_INDEX 9
+#include "parrot/exceptions.h"
 
 /* tailcall seems to have some bugs (causes segfaults) */
-#define DO_TAIL_CALL 0
+#define DO_TAIL_CALL 1
 
 
-void emit(parrot_data* to, const char *format, ...) {
+void 
+emit( parrot_data* to, 
+      const char *format, 
+      ...                   ) {
     va_list args;
     STRING *written;
     va_start(args, format);
@@ -35,7 +35,9 @@ void emit(parrot_data* to, const char *format, ...) {
     to->code = string_append(to->interp, to->code, written);
 }
 
-char* escapeForLabel(const char* str) {
+/** Escape a label name to allow it to be a PIR label name */
+char* 
+escapeForLabel(const char* str) {
     int len = strlen(str);
     char* result = (char*) malloc(len + 1);
     int i;
@@ -50,7 +52,10 @@ char* escapeForLabel(const char* str) {
 }
 
 
-static void emit_newObject(int destReg, Naming naming, parrot_data* to) {
+static void 
+emit_newObject( int destReg, 
+                Naming naming, 
+                parrot_data* to ) {
     int protoReg = naming.regNo++;
     emit(to, "    $P%d = pjs_find_lex @env_%d, 'Object'\n", protoReg, naming.scopeNo);
     emit(to, "    $P%d = $P%d['prototype']\n", protoReg, protoReg);
@@ -59,20 +64,30 @@ static void emit_newObject(int destReg, Naming naming, parrot_data* to) {
 }
 
 
-void emit_undefined(int destReg, Naming naming, parrot_data* to) {
+void 
+emit_undefined( int destReg, 
+                Naming naming, 
+                parrot_data* to ) {
     /* emit(to, "    $P%d = new 'PjsUndefined' \n", destReg); */
     /*emit(to, "    $P%d = get_hll_global 'undefined'\n", destReg);*/
     emit(to, "    $P%d = @undefined\n", destReg);
 }
 
-static char* createName(char* prefix, int n, Mempool mp) {
+static char* 
+createName( char* prefix, 
+            int n, 
+            Mempool mp  ) {
     char* name = mp_malloc(11 + strlen(prefix), mp);
     assert(n >= 0);
     sprintf(name, "%s_%d", prefix, n);
     return name;
 }
 
-static void emit_stmtList(PjsList stmts, int destReg, Naming naming, parrot_data* to) {
+static void 
+emit_stmtList( PjsList stmts, 
+               int destReg, 
+               Naming naming, 
+               parrot_data* to  ) {
     ListEntry entry;
     int emitted = 0;
     
@@ -89,7 +104,12 @@ static void emit_stmtList(PjsList stmts, int destReg, Naming naming, parrot_data
     }
 }
 
-static void emitTryFinally(PjsList tryBlock, PjsList finallyBlock, int destReg, Naming naming, parrot_data* to) {
+static void 
+emitTryFinally( PjsList tryBlock, 
+                PjsList finallyBlock, 
+                int destReg, 
+                Naming naming, 
+                parrot_data* to     ) {
     int labelNo = (*naming.labelNo)++;
     
     if (destReg >= 0) {
@@ -122,7 +142,14 @@ static void emitTryFinally(PjsList tryBlock, PjsList finallyBlock, int destReg, 
     emit(to, "  END_TRY_FINALLY@%d:\n", labelNo);
     emit(to, "# end <try-finally %d>\n", labelNo);
 }
-static void emitTryCatch(PjsList tryBlock, char *catchVar, PjsList catchBlock, int destReg, Naming naming, parrot_data* to) {
+
+static void 
+emitTryCatch( PjsList tryBlock, 
+              char *catchVar, 
+              PjsList catchBlock, 
+              int destReg, 
+              Naming naming, 
+              parrot_data* to   ) {
     int labelNo = (*naming.labelNo)++;
     int regNo = naming.regNo++;
     Naming namingCopy;
@@ -146,18 +173,13 @@ static void emitTryCatch(PjsList tryBlock, char *catchVar, PjsList catchBlock, i
     /* Unwrap our js exception from the parrot exception.
      * If it is not a js exception, unwrap it as a string.
      */
-    emit(to, "    $I%d = exists @exc[%d]\n", regNo, EXCEPTION_JSOBJ_INDEX);
-    emit(to, "    unless $I%d goto EXC_NOT_JS@%d\n", regNo, labelNo);
-    emit(to, "    $P%d = @exc[%d]\n", regNo, EXCEPTION_JSOBJ_INDEX);
+    emit(to, "    $P%d = getattribute @exc, 'payload'\n", regNo);
+    emit(to, "    if_null $P%d, EXC_NOT_JS@%d\n", regNo, labelNo);
     emit(to, "    goto EXC_END@%d\n", labelNo);
     emit(to, "  EXC_NOT_JS@%d:\n", labelNo);
-    emit(to, "    $I%d = exists @exc[%d]\n", regNo, EXCEPTION_MSG_INDEX);
-    emit(to, "    unless $I%d goto EXC_NO_MSG@%d\n", regNo, labelNo);
-    emit(to, "    $P%d = @exc[%d]\n", regNo, EXCEPTION_MSG_INDEX);
-    emit(to, "    goto EXC_END@%d\n", labelNo);
-    emit(to, "  EXC_NO_MSG@%d:\n", labelNo);
     emit(to, "    $P%d = new 'PjsString'\n", regNo);
-    emit(to, "    $P%d = 'Unknown exception.'\n", regNo);
+    emit(to, "    $P%d = @exc_msg\n", regNo);
+    emit(to, "    goto EXC_END@%d\n", labelNo);
     emit(to, "  EXC_END@%d:\n", labelNo);
     
     /* We need to push a new Hash at the front of the scope chain 
@@ -173,16 +195,25 @@ static void emitTryCatch(PjsList tryBlock, char *catchVar, PjsList catchBlock, i
     emit(to, "  END_TRY_CATCH@%d:\n", labelNo);
 }
 
-
-static void emit_func_params(int startReg, int nParams, int currentScope, parrot_data* to) {
+/** Emit the parameter list in a function call. */
+static void 
+emit_func_params( int startReg, 
+                  int nParams, 
+                  int currentScope, 
+                  parrot_data* to   ) {
     int i;
-    for (i = 0; i<nParams; i++) {
+    for (i = 0; i < nParams; i++) {
         emit(to, ", $P%d", startReg + i);
     }
     emit(to, ")\n");
 }
+
 static void 
-emit_funcall(Node expr, int destReg, int doReturn, Naming naming, parrot_data* to) {
+emit_funcall( Node expr, 
+              int destReg, 
+              int doReturn, 
+              Naming naming, 
+              parrot_data* to   ) {
     int nParams, funcReg;
     int startReg = naming.regNo;
     ListEntry entry;
@@ -291,7 +322,8 @@ emit_funcall(Node expr, int destReg, int doReturn, Naming naming, parrot_data* t
     }
 }
 
-static int isControlStructure(Node stmt) {
+static int 
+isControlStructure( Node stmt ) {
     int kind = stmt->kind;
     return  kind == EFor_stm     || 
             kind == EForIn_stm   || 
@@ -300,11 +332,15 @@ static int isControlStructure(Node stmt) {
             kind == ESwitch_stm;
 }
 
-void emit_stmt(Node stmt, int destReg, Naming naming, parrot_data* to) {
+void 
+emit_stmt( Node stmt, 
+           int destReg, 
+           Naming naming, 
+           parrot_data* to ) {
     if (stmt->stmtLabels && ! isControlStructure(stmt)) {
         stmt->labelNo = (*naming.labelNo)++;
         
-        /* never needed (no continue inside a non-loop!) */
+        /* next is never needed (no continue inside a non-loop!) */
         /* emit(to, "  CONTINUE@%d:\n", stmt->labelNo); */
     }
     
@@ -474,9 +510,7 @@ void emit_stmt(Node stmt, int destReg, Naming naming, parrot_data* to) {
         if (destReg >= 0) {
             emit_undefined(destReg, naming, to);
         }
-        emit(to, 
-                "    goto CONTINUE@%d\n",
-                stmt->u.continueBreak.brokenStmt->labelNo);
+        emit(to, "    goto CONTINUE@%d\n", stmt->u.continueBreak.brokenStmt->labelNo);
         break;
         
     case EBreak_stm:
@@ -485,9 +519,7 @@ void emit_stmt(Node stmt, int destReg, Naming naming, parrot_data* to) {
         if (destReg >= 0) {
             emit_undefined(destReg, naming, to);
         }
-        emit(to, 
-                "    goto BREAK@%d\n",
-                stmt->u.continueBreak.brokenStmt->labelNo);
+        emit(to, "    goto BREAK@%d\n", stmt->u.continueBreak.brokenStmt->labelNo);
         break;
         
     case EReturn_stm:
@@ -535,10 +567,10 @@ void emit_stmt(Node stmt, int destReg, Naming naming, parrot_data* to) {
         int parExReg = naming.regNo++;
         emit(to, "# <throw>\n");
         emit_expr(stmt->u.expr, jsExReg, naming, to);
-        emit(to, "    $P%d = new 'Exception'\n", parExReg);
-        emit(to, "    $P%d[%d] = $P%d\n", parExReg, EXCEPTION_JSOBJ_INDEX, jsExReg);
         emit(to, "    $S%d = $P%d\n", jsExReg, jsExReg);
-        emit(to, "    $P%d[%d] = $S%d\n", parExReg, EXCEPTION_MSG_INDEX, jsExReg);
+        emit(to, "    $P%d = new 'Exception'\n", parExReg);
+        emit(to, "    $P%d = $S%d\n", parExReg, jsExReg);
+        emit(to, "    setattribute $P%d, 'payload', $P%d\n", parExReg, jsExReg);
         emit(to, "    throw $P%d\n", parExReg);
         emit(to, "# end <throw>\n");
     }
@@ -653,10 +685,14 @@ void emit_stmt(Node stmt, int destReg, Naming naming, parrot_data* to) {
     }
 }
 
-void emit_expr(Node expr, int destReg, Naming naming, parrot_data* to) {
-    if (! expr) {
+void 
+emit_expr( Node expr, 
+           int destReg, 
+           Naming naming, 
+           parrot_data* to  ) {
+    if (! expr)
         emit(to, "## EXPRESSION WAS NULL!\n");
-    }
+
     switch(expr->kind) {
     case EIdentifier:
         emit(to, "    $P%d = pjs_find_lex @env_%d, '%s'\n", destReg, naming.scopeNo, expr->u.strVal);
@@ -760,9 +796,9 @@ void emit_expr(Node expr, int destReg, Naming naming, parrot_data* to) {
     case ERegex:
         /* TODO */
         emit(to, "# TODO: regex: %s\n", expr->u.strVal);
-        emit(to, "    $P%d = new 'Exception'\n", destReg);
         emit(to, "    $S%d = 'Regular expressions not implemented (regex=%s)'\n", destReg, expr->u.strVal);
-        emit(to, "    $P%d[%d] = $S%d\n", destReg, EXCEPTION_MSG_INDEX, destReg);
+        emit(to, "    $P%d = new 'Exception'\n", destReg);
+        emit(to, "    $P%d = $S%d\n", destReg, destReg);
         emit(to, "    throw $P%d\n", destReg);
         return;
     case EPropAccess:
@@ -830,11 +866,16 @@ void emit_expr(Node expr, int destReg, Naming naming, parrot_data* to) {
     }
         return;
     default: 
-        /* TODO real_exception() */
+        /* TODO Parrot_ex_throw_from_c_args() */
         return;
     }
 }
-void emit_jsfunc_creation(Node func, int destReg, Naming naming, parrot_data* to) {
+
+void 
+emit_jsfunc_creation( Node func, 
+                      int destReg, 
+                      Naming naming, 
+                      parrot_data* to   ) {
 
     emit(to, "    .const .Sub %s = '%s'\n", func->u.function.pir_subroutine_name, 
                                             func->u.function.pir_subroutine_name);
@@ -846,7 +887,10 @@ void emit_jsfunc_creation(Node func, int destReg, Naming naming, parrot_data* to
                                     pjslist_length(func->u.function.params));
 }
 
-static void emit_fundecList(PjsList stmts, Naming naming, parrot_data* to) {
+static void 
+emit_fundecList( PjsList stmts, 
+                 Naming naming, 
+                 parrot_data* to    ) {
     ListEntry entry;
     
     if (! (stmts && stmts-> start))
@@ -864,7 +908,10 @@ static void emit_fundecList(PjsList stmts, Naming naming, parrot_data* to) {
     }
 }
 
-static void emit_params(PjsList params, Naming naming, parrot_data* to) {
+static void 
+emit_params( PjsList params, 
+             Naming naming, 
+             parrot_data* to    ) {
     ListEntry entry;
     
     emit(to, "    .param pmc @this\n");
@@ -912,7 +959,10 @@ static void emit_params(PjsList params, Naming naming, parrot_data* to) {
     emit(to, "\n");
 }
 
-void emit_vardecList_declaration(PjsList list, Naming naming, parrot_data* to) {
+void 
+emit_vardecList_declaration( PjsList list, 
+                             Naming naming, 
+                             parrot_data* to    ) {
     ListEntry entry;
     for (entry = list->start; entry; entry = entry->next) {
         char* name = (char*) entry->elem;
@@ -921,7 +971,11 @@ void emit_vardecList_declaration(PjsList list, Naming naming, parrot_data* to) {
             PJS_HASH_ENTRY__DONT_DELETE);
     }
 }
-void emit_vardecList_assignment(PjsList nameValueList, Naming naming, parrot_data* to) {
+
+void 
+emit_vardecList_assignment( PjsList nameValueList, 
+                            Naming naming, 
+                            parrot_data* to ) {
     ListEntry entry;
     int reg = naming.regNo++;
     for (entry = nameValueList->start; entry; entry = entry->next) {
@@ -935,7 +989,10 @@ void emit_vardecList_assignment(PjsList nameValueList, Naming naming, parrot_dat
 }
 
 
-void emit_func(Node func, int doEval, parrot_data* to) {
+void 
+emit_func( Node func, 
+           int doEval, 
+           parrot_data* to  ) {
     int labelNo = 0;
     int returnReg;
     char* func_name = func->u.function.pir_subroutine_name;
@@ -974,7 +1031,10 @@ void emit_func(Node func, int doEval, parrot_data* to) {
     emit(to, ".end\n\n\n");
 }
 
-void emit_all_funcs(Node root, int doEvalMain, parrot_data* to) {
+void 
+emit_all_funcs( Node root, 
+                int doEvalMain, 
+                parrot_data* to ) {
     ListEntry func;
     emit_func(root, doEvalMain, to);
     for (func = root->u.function.innerFuncs->start; func; func = func->next) {
@@ -988,7 +1048,10 @@ extern void pjs_yy_scan_string(char* str, void* scanner);
 extern void pjs_yyset_extra(Params* p, void* scanner);
 extern int pjs_yyparse(Params* p);
 
-static void generate_subroutine_names(Node root, char* outer_func_name, parrot_data* to) {
+static void 
+generate_subroutine_names( Node root, 
+                           char* outer_func_name, 
+                           parrot_data* to          ) {
     ListEntry func;
     root->u.function.pir_subroutine_name = outer_func_name;
     
@@ -1000,7 +1063,9 @@ static void generate_subroutine_names(Node root, char* outer_func_name, parrot_d
     }
 }
 
-static void emitMain(Node root, parrot_data* to) {
+static void 
+emitMain( Node root, 
+          parrot_data* to   ) {
     int nextReg;
     
     emit(to, ".HLL 'Pjs', 'pjs_group'\n");
@@ -1023,7 +1088,9 @@ static void emitMain(Node root, parrot_data* to) {
     emit(to, ".end\n\n\n## MAIN\n");
 }
 
-static void emitProgramGetter(Node root, parrot_data* to) {
+static void 
+emitProgramGetter( Node root, 
+                   parrot_data* to  ) {
     int nextReg;
     
     emit(to, ".HLL 'Pjs', 'pjs_group'\n");
@@ -1039,7 +1106,10 @@ static void emitProgramGetter(Node root, parrot_data* to) {
     emit(to, ".end\n\n\n## MAIN\n");
 }
 
-int js2pir(char* str, int isMain, parrot_data* to) {
+int 
+js2pir( char* str, 
+        int isMain, 
+        parrot_data* to ) {
     void* scanner;
     Params* p;
     int ret;
@@ -1056,7 +1126,7 @@ int js2pir(char* str, int isMain, parrot_data* to) {
     pjs_yyset_extra(p, scanner);
     ret = pjs_yyparse(p);
     if (ret != 0) {
-        real_exception(to->interp, NULL, E_SyntaxError, 
+        Parrot_ex_throw_from_c_args(to->interp, NULL, EXCEPTION_SYNTAX_ERROR, 
                 "%s", p->err_msg);
     } else {
         visit(p->program, 0, 0, p->mempool);

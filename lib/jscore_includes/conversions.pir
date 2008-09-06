@@ -69,7 +69,7 @@
     .param pmc env
     # TODO wrap in a TypeError
     $P0 = new 'Exception'
-    $P0['_message'] = "TypeError: can't convert null to object"
+    $P0['message'] = "TypeError: can't convert null to object"
     throw $P0
 .end
 
@@ -78,7 +78,7 @@
     .param pmc env
     # TODO wrap in a TypeError
     $P0 = new 'Exception'
-    $P0['_message'] = "TypeError: can't convert undefined to object"
+    $P0['message'] = "TypeError: can't convert undefined to object"
     throw $P0
 .end
 

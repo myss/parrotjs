@@ -164,6 +164,6 @@
 
   err:
     $P0 = new 'Exception'
-    $P0['_message'] = "TypeError (TODO): invalid in operand"
+    $P0['message'] = "TypeError (TODO): invalid in operand"
     throw $P0
 .end

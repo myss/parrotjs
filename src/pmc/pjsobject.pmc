@@ -58,7 +58,7 @@ static void pjs_set_prototype(Interp* interp, PMC* obj, PMC* proto) {
         p = PROTO(p);
     
     if (p == obj)
-        real_exception(interp, NULL, INVALID_OPERATION, 
+        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_INVALID_OPERATION, 
             "Cyclic prototype chain!");
     else
         PROTO(obj) = proto;
@@ -148,9 +148,9 @@ PMC* toPrimitive_hint_number(Interp* interp, PMC* obj) {
     else if (try_toString(interp, obj, &res))
         return res;
     else {
-        real_exception(
+        Parrot_ex_throw_from_c_args(
             interp, NULL, 
-            E_KeyError, /*TODO use a suitable error type*/
+            EXCEPTION_KEY_NOT_FOUND, /*TODO use a suitable error type*/
             "Can't convert object to a primitive value.");
         return NULL;
     }
@@ -162,9 +162,9 @@ PMC* toPrimitive_hint_string(Interp* interp, PMC* obj) {
     else if (try_valueOf(interp, obj, &res))
         return res;
     else {
-        real_exception(
+        Parrot_ex_throw_from_c_args(
             interp, NULL, 
-            E_KeyError, /*TODO use a suitable error type*/
+            EXCEPTION_KEY_NOT_FOUND, /*TODO use a suitable error type*/
             "Can't convert object to a primitive value.");
         return NULL;
     }
@@ -371,7 +371,7 @@ pmclass PjsObject
             if (is_js_primitive(INTERP, res))
                 return VTABLE_get_string(INTERP, res);
         }
-        real_exception(INTERP, NULL, INVALID_OPERATION, 
+        Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION, 
                     "Does not know how to stringify object");
         return NULL;
     }

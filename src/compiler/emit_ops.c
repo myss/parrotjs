@@ -5,10 +5,13 @@
 #include "parser.tab.h"
 #include "mempool.h"
 #include "transform.h"
+#include "parrot/exceptions.h"
 
 
 static int
-contains(const int array[], const int elem, const int size) {
+contains( const int array[], 
+          const int elem, 
+          const int size    ) {
     int i;
     for (i=0; i<size; i++) {
         if (array[i] == elem)
@@ -17,12 +20,19 @@ contains(const int array[], const int elem, const int size) {
     return 0;
 }
 
+/**
+ * Examples: 
+ *      x++
+ *      y--
+ *      ++z 
+ *      delete x
+ */
 static void 
-emit_unop_change_env(   Node expr, 
-                        int op, 
-                        int destReg, 
-                        Naming naming, 
-                        parrot_data* to     ) {
+emit_unop_change_env( Node expr, 
+                      int op, 
+                      int destReg, 
+                      Naming naming, 
+                      parrot_data* to     ) {
     int reg = naming.regNo++;
     char* varName;
     varName = expr->u.unop.expr->u.strVal;
@@ -80,12 +90,19 @@ emit_unop_change_env(   Node expr,
     }
 }
 
+/**
+ * Examples: 
+ *      obj.x++
+ *      obj.y--
+ *      ++obj.z 
+ *      delete obj.x
+ */
 static void 
-emit_unop_change_prop(  Node expr,
-                        int op, 
-                        int destReg, 
-                        Naming naming, 
-                        parrot_data* to     ) {
+emit_unop_change_prop( Node expr,
+                       int op, 
+                       int destReg, 
+                       Naming naming, 
+                       parrot_data* to     ) {
     int contReg = naming.regNo++;
     int reg = naming.regNo++;
     char* propname = expr->u.unop.expr->u.getprop.propName;
@@ -132,12 +149,20 @@ emit_unop_change_prop(  Node expr,
         break;
     }
 }
+
+/**
+ * Examples: 
+ *      obj[3]++
+ *      obj['s']--
+ *      ++obj[a] 
+ *      delete obj[10]
+ */
 static void 
-emit_unop_change_indexed(   Node expr,
-                            int op, 
-                            int destReg, 
-                            Naming naming, 
-                            parrot_data* to     ) {
+emit_unop_change_indexed( Node expr,
+                          int op, 
+                          int destReg, 
+                          Naming naming, 
+                          parrot_data* to     ) {
     int contReg = naming.regNo++;
     int propNameReg = naming.regNo++;
     int reg = naming.regNo++;
@@ -185,12 +210,21 @@ emit_unop_change_indexed(   Node expr,
     }
 }
 
+/**
+ * Examples: 
+ *      void 10
+ *      typeof x
+ *      +10
+ *      -'20'
+ *      ! b
+ *      ~n
+ */
 static void 
-emit_unop_no_change(Node expr, 
-                    int op, 
-                    int destReg, 
-                    Naming naming, 
-                    parrot_data* to     ) {
+emit_unop_no_change( Node expr, 
+                     int op, 
+                     int destReg, 
+                     Naming naming, 
+                     parrot_data* to     ) {
     int reg = naming.regNo++;
     switch (op) {
     case VOID:
@@ -232,7 +266,6 @@ emit_unop_no_change(Node expr,
     }
 }
 
-
 void 
 emit_unop( Node expr, 
            int op, 
@@ -251,18 +284,22 @@ emit_unop( Node expr,
     } else if(expr->u.unop.expr->kind == EIdentifier) {
         emit_unop_change_env(expr, op, destReg, naming, to);
     } else {
-        real_exception(to->interp, NULL, E_SyntaxError, 
+        Parrot_ex_throw_from_c_args(to->interp, NULL, EXCEPTION_SYNTAX_ERROR, 
                 "Unexpected operand for binary operation.");
     }
 }
 
-
-void emit_strict_binop(int leftReg, 
-                       int rightReg, 
-                       int op, 
-                       int destReg,
-                       Naming naming,
-                       parrot_data* to     ) {
+/**
+ * Binary operators that evaluate both operands.
+ * These are every binary operators except && and ||
+ */
+void
+emit_strict_binop( int leftReg, 
+                   int rightReg, 
+                   int op, 
+                   int destReg,
+                   Naming naming,
+                   parrot_data* to   ) {
     switch (op) {
     case '+':
         emit(to, "    $P%d = new 'PjsUndefined'\n", destReg);
@@ -420,13 +457,18 @@ emit_binop( Node left,
     }
 }
 
+/**
+ * Examples:
+ *      x = 10
+ *      y += 'abc'
+ *      ...
+ */
 static void 
 emit_assignment_change_env( Node expr, 
                             int destReg, 
                             Naming naming, 
                             parrot_data* to     ) {
-    char* varName;
-    varName = expr->u.assign.left->u.strVal;
+    char* varName = expr->u.assign.left->u.strVal;
     if (expr->u.assign.type == '=') {
         emit_expr(expr->u.assign.right, destReg, naming, to);
         emit(to, "    pjs_store_lex $P%d, @env_%d, '%s'\n", destReg, naming.scopeNo, varName);
@@ -440,11 +482,17 @@ emit_assignment_change_env( Node expr,
     }
 }
 
+/**
+ * Examples:
+ *      obj.x = 10
+ *      obj.y += 'abc'
+ *      ...
+ */
 static void 
-emit_assignment_change_prop(  Node expr, 
-                                int destReg, 
-                                Naming naming, 
-                                parrot_data* to     ) {
+emit_assignment_change_prop( Node expr, 
+                             int destReg, 
+                             Naming naming, 
+                             parrot_data* to     ) {
 
     int contReg = naming.regNo++;
     char* propname = expr->u.assign.left->u.getprop.propName;
@@ -465,6 +513,12 @@ emit_assignment_change_prop(  Node expr,
     }
 }
 
+/**
+ * Examples:
+ *      obj[x] = 10
+ *      obj[3] += 'abc'
+ *      ...
+ */
 static void 
 emit_assignment_change_indexed( Node expr, 
                                 int destReg, 
@@ -504,7 +558,7 @@ emit_assignment( Node expr,
     } else if (expr->u.assign.left->kind == EIdentifier) {
         emit_assignment_change_env(expr, destReg, naming, to);
     } else {
-        real_exception(to->interp, NULL, E_SyntaxError, 
+        Parrot_ex_throw_from_c_args(to->interp, NULL, EXCEPTION_SYNTAX_ERROR, 
             "Unexpected lefthandside in assignment.");
     }
 }

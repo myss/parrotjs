@@ -129,7 +129,7 @@
     $S0 = 'TypeError: '
     $S0 .= method_name
     $S0 .= ' is not a function'
-    $P0['_message'] = $S0
+    $P0['message'] = $S0
     throw $P0
     
   is_PjsFunction:

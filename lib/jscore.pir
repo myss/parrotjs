@@ -89,7 +89,7 @@
   err:
     # TODO use a real Error object
     $P0 = new 'Exception'
-    $P0[0] = 'TypeError'
+    $P0['message'] = 'TypeError'
     throw $P0
 .end
 
@@ -121,7 +121,7 @@
     $S0 = 'File not found: '
     $S0 = $S0 . path
     $P0 = new 'Exception'
-    $P0[0] = $S0
+    $P0['message'] = $S0
     throw $P0
 .end
 

@@ -63,7 +63,7 @@ pmclass PjsUndefined
     }
 
     opcode_t* invoke(void* next) {
-        real_exception(INTERP, NULL, E_NotImplementedError,
+        Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_UNIMPLEMENTED,
                        "undefined can't be invoked!");
         return NULL;
     }
