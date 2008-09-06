@@ -115,7 +115,7 @@ pmclass PjsArray
         if (key_type == KEY_LENGTH) {
             FLOATVAL len = VTABLE_get_number(INTERP, value);
             if (! PJS_IS_UINTVAL(len)) {
-                real_exception(INTERP, NULL, INVALID_OPERATION, 
+                Parrot_ex_throw_from_c_args(INTERP, NULL, EXCEPTION_INVALID_OPERATION, 
                     "Invalid array length.");
             }
             VTABLE_set_integer_native(INTERP, GET_ARRAY(SELF), PJS_TO_UINTVAL(len));

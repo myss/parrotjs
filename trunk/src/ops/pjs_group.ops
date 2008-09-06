@@ -106,9 +106,9 @@ static PMC* toPrimitive_hint_number(Interp* interp, PMC* obj) {
     else if (try_toString(interp, obj, &res))
         return res;
     else {
-        real_exception(
+        Parrot_ex_throw_from_c_args(
             interp, NULL, 
-            E_KeyError, /*TODO use a suitable error type*/
+            EXCEPTION_KEY_NOT_FOUND, /*TODO use a suitable error type*/
             "Can't convert object to a primitive value.");
         return NULL;
     }
@@ -120,9 +120,9 @@ static PMC* toPrimitive_hint_string(Interp* interp, PMC* obj) {
     else if (try_valueOf(interp, obj, &res))
         return res;
     else {
-        real_exception(
+        Parrot_ex_throw_from_c_args(
             interp, NULL, 
-            E_KeyError, /*TODO use a suitable error type*/
+            EXCEPTION_KEY_NOT_FOUND, /*TODO use a suitable error type*/
             "Can't convert object to a primitive value.");
         return NULL;
     }
@@ -214,7 +214,7 @@ inline op pjs_find_lex(out PMC, in PMC, in PMC) {
             hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
         } else {
             /* there is no parent scope */
-            real_exception(interp, NULL, E_KeyError, 
+            Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_KEY_NOT_FOUND, 
                             "ReferenceError: %s is not defined",
                             Parrot_string_cstring(interp, 
                                 VTABLE_get_string(interp, $3)));
@@ -237,7 +237,7 @@ inline op pjs_find_lex(out PMC, in PMC, in STR) {
             hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
         } else {
             /* there is no parent scope */
-            real_exception(interp, NULL, E_KeyError, 
+            Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_KEY_NOT_FOUND, 
                             "ReferenceError: %s is not defined",
                             Parrot_string_cstring(interp, $3));
             break;
@@ -270,7 +270,7 @@ inline op pjs_find_lex_and_base(out PMC, in PMC, in STR, inout PMC) {
             hash =  VTABLE_get_pmc_keyed_int(interp, scope, HASH_INDEX);
         } else {
             /* there is no parent scope */
-            real_exception(interp, NULL, E_KeyError, 
+            Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_KEY_NOT_FOUND, 
                             "ReferenceError: %s is not defined",
                             Parrot_string_cstring(interp, $3));
             break;
@@ -406,7 +406,7 @@ inline op pjs_compile(out STR, in STR, in INT) {
 inline op pjs_file_path(out STR, in STR) {
     $1 = Parrot_locate_runtime_file_str(interp, $2, PARROT_RUNTIME_FT_SOURCE);
     if (string_length(interp, $1) == 0)
-        real_exception(interp, NULL, E_KeyError, 
+        Parrot_ex_throw_from_c_args(interp, NULL, EXCEPTION_KEY_NOT_FOUND, 
                             "File not found: %s",
                             Parrot_string_cstring(interp, $2));
     goto NEXT();
