@@ -234,7 +234,7 @@ emit_funcall( Node expr,
         
         if (doReturn) {
 #if DO_TAIL_CALL
-            emit(to, "    .return 'pjs_invoke_method'($P%d, '%s', @env_%d", thisReg, thisReg, propname, naming.scopeNo);
+            emit(to, "    .return 'pjs_invoke_method'($P%d, '%s', @env_%d", thisReg, propname, naming.scopeNo);
             emit_func_params(startReg, nParams, naming.scopeNo, to);
 #else
             emit(to, "    $P%d = 'pjs_invoke_method'($P%d, '%s', @env_%d", thisReg, thisReg, propname, naming.scopeNo);
@@ -796,7 +796,7 @@ emit_expr( Node expr,
     case ERegex:
         /* TODO */
         emit(to, "# TODO: regex: %s\n", expr->u.strVal);
-        emit(to, "    $S%d = 'Regular expressions not implemented (regex=%s)'\n", destReg, expr->u.strVal);
+        emit(to, "    # Regular expressions not implemented (regex=%s)\n", expr->u.strVal);
         emit(to, "    $P%d = new 'Exception'\n", destReg);
         emit(to, "    $P%d = $S%d\n", destReg, destReg);
         emit(to, "    throw $P%d\n", destReg);

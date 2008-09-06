@@ -264,6 +264,7 @@ void visit(Node node, Node parentFunc, Node parentBlock, Mempool MP) {
                     contBlock->kind != EFor_stm &&
                     contBlock->kind != EForIn_stm &&
                     contBlock->kind != EWhile_stm &&
+                    contBlock->kind != EDoWhile_stm &&
                     contBlock->kind != ESwitch_stm) {
                 contBlock = contBlock->outerBlock;
             }
