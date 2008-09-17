@@ -20,7 +20,7 @@ How to build?
 
 - add 'pjs' to parrot_dir/config/gen/languages.pm (just add the word 'pjs' next to other languages).
 
-- append two lines to parrot_dir/src/call_list.txt, one containing 'v JOPI' and one containing 'I JOP'
+- append two lines to parrot_dir/config/gen/call_list/misc.in, one containing 'v JOPI' and one containing 'I JOP'
 
 - go to parrot_dir/ and do:
   
