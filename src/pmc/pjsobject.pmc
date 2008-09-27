@@ -476,6 +476,11 @@ pmclass PjsObject
         STRING* js_type = STR_object;
         RETURN(STRING* js_type);
     }
+    METHOD hasOwnProperty(STRING* key) {
+        PMC* value = VTABLE_get_pmc_keyed_str(INTERP, (PMC*) HASH(SELF), key);
+        INTVAL has = ! PMC_IS_NULL(value);
+        RETURN(INTVAL has);
+    }
     
     INTVAL cmp (PMC* value) {
         FLOATVAL left = SELF.get_number();

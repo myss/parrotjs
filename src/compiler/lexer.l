@@ -128,8 +128,9 @@ IDStart         {ULetter}|"$"|"_"|\\{UnicodeEscapeSequence}
   /* TODO UnicodeCombiningMark, UnicodeConnectorPunctuation */
 IDPart          {ULetter}|{UDigit}|"$"|"_"|\\{UnicodeEscapeSequence}
 
-RegexFirstChar  [^\n\r\*\\/]|\\[^\n\r]
-RegexChar       [^\n\r\\/]|\\[^\n\r]
+RegexFirstChar  [^\n\r\*\\/\[\]]|\\[^\n\r]
+RegexChar       [^\n\r\\/\[\]]|\\[^\n\r]
+RegexClassRanges    \[([^\]\\]|\\.)*\]
 RegexFlag       {IDPart}
 
     /*      "/@@PIR <some pir code> END@/"   (replace @ with *)    */
@@ -325,7 +326,7 @@ WS                  {HWS}|{VWS}
  /* octals not allowed */
 0{OctalDigit}+  { return OCTAL_NUMBER_LITERAL; }
     
-<REGEX>"/"{RegexFirstChar}{RegexChar}*"/"{RegexFlag}*  {
+<REGEX>"/"{RegexFirstChar}({RegexChar}|{RegexClassRanges})*"/"{RegexFlag}*  {
         COUNT;
         BEGIN(DIV); 
         DEBUG("REGEX_LITERAL_");
